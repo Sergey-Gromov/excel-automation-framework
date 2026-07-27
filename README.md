@@ -142,3 +142,42 @@ Improvements to the diff engine itself (new checks, bug fixes) belong in
 `excel-framework-core`, not in a task repository — they immediately benefit
 every task once re-installed (`pip install -e ../excel-framework-core`
 picks up changes live, no reinstall needed while editable).
+
+## CI
+
+`.github/workflows/tests.yml` runs `pytest` on every push/PR. It does **not**
+use `requirements.txt` as-is, because the `-e ../excel-framework-core`
+relative path only exists in local sibling-folder checkouts, not on a GitHub
+Actions runner (which only checks out this one repository). Instead the
+workflow installs:
+
+- `openpyxl` / `pytest` directly, and
+- `excel-framework-core` from its own GitHub repo, pinned to a release tag:
+  ```
+  pip install "git+https://x-access-token:${{ secrets.CORE_REPO_TOKEN }}@github.com/Sergey-Gromov/excel-framework-core.git@v0.1.0"
+  ```
+
+### `CORE_REPO_TOKEN` secret
+
+`excel-framework-core` is a private repository, so the default
+`GITHUB_TOKEN` (scoped only to this repo) can't clone it. `CORE_REPO_TOKEN`
+is a **fine-grained personal access token**, scoped to:
+
+- Resource owner: `Sergey-Gromov`
+- Repository access: only `excel-framework-core`
+- Permissions: Contents → Read-only
+
+Stored as a repo secret at Settings → Secrets and variables → Actions in
+this repository. To set or rotate it, run (in a real terminal, not piped
+through anything that could log the value):
+
+```bash
+gh secret set CORE_REPO_TOKEN --repo Sergey-Gromov/Excel-Automation-Framework
+```
+
+### Bumping the engine version in CI
+
+When `excel-framework-core` gets a new release:
+
+1. Tag it: `git tag vX.Y.Z && git push origin vX.Y.Z` (in `excel-framework-core`).
+2. Update the tag in `.github/workflows/tests.yml` (`@v0.1.0` → `@vX.Y.Z`).
