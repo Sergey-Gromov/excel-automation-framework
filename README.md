@@ -32,11 +32,14 @@ prompts/
   05_regression.md
   06_release.md
 
-transform.py           Entry point for your transformation (uses openpyxl)
+transform.py            Entry point for your transformation (uses openpyxl)
+run_production.py       Production wrapper: validates input structure before
+                        transforming, quarantines drifted files instead
 
 tests/
   test_expected_output.py
   test_no_unexpected_changes.py
+  test_run_production.py
   conftest.py
 
 samples/
@@ -92,6 +95,40 @@ Options:
 ```
 
 Exit code is `0` if no differences found, `1` otherwise — safe to use in CI.
+
+## Running in production: handling input format drift
+
+`transform.py` is deterministic — it doesn't adapt if the incoming file's
+structure changes (header row moves, columns get added/removed/reordered,
+formats change). Left to itself it will either crash, or worse, run
+"successfully" while quietly writing into the wrong cells. Don't call
+`transform.py` directly on unattended/production input — use
+`run_production.py`, which gates the transformation behind the same
+structural check as above:
+
+```bash
+python run_production.py path/to/incoming_file.xlsx path/to/output.xlsx
+```
+
+- **Structure matches the sample** → runs `transform.py`, writes the output,
+  exits `0`.
+- **Structure has drifted** → does **not** run the transformation. Instead
+  it copies the incoming file plus the diff reports into
+  `needs_review/<timestamp>_<filename>/` and exits `1`, so a human (or CI
+  step / cron `MAILTO`) can pick it up.
+
+This is a fail-fast/quarantine gate, not auto-repair — the framework's whole
+premise is no unreviewed changes, so a drifted input is a stop-and-look
+signal, not something the script should guess its way through. If the
+format change is legitimate and recurring, that's a cue to go back to the
+`prompts/01_specification.md` … `06_release.md` pipeline and update
+`transform.py` (or make it read headers by name instead of fixed position,
+the way `compare_workbooks` already does) to handle the new shape — see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for when an LLM is (and isn't)
+involved.
+
+Options: `--sample PATH` (default `samples/input.xlsx`), `--report-dir DIR`
+(default `reports/`), `--needs-review-dir DIR` (default `needs_review/`).
 
 ---
 
