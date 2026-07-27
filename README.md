@@ -3,7 +3,9 @@
 This is a **task repository**: it implements one specific Excel transformation.
 The reusable diff/validation engine lives in a separate package,
 [`excel-framework-core`](../excel-framework-core), installed as a dependency
-(see `requirements.txt`).
+(see `requirements.txt`). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+for how the two repos fit together, local-vs-CI installs, and where an LLM
+is (and isn't) involved.
 
 The goal is simple:
 
@@ -13,6 +15,7 @@ The goal is simple:
 
 ```text
 docs/
+  ARCHITECTURE.md      How this repo and excel-framework-core fit together
   SPEC.md              Main specification and invariants
   TASKS.md             Current task for the coding agent
   TEST_PLAN.md         Test strategy
@@ -116,7 +119,8 @@ passes and the diff report contains no unexpected changes.
 ## Do you need Claude/an LLM to run this?
 
 No — only to *build* it. Once `transform.py` is implemented and `pytest`
-passes, running the transformation is a plain, deterministic Python script:
+passes, running the transformation is a plain, deterministic Python script
+with no AI dependency or network call:
 
 ```bash
 python -m excel_framework.validate_input samples/input.xlsx new_file.xlsx   # optional pre-check
@@ -124,19 +128,8 @@ python transform.py new_file.xlsx output.xlsx
 pytest
 ```
 
-None of this calls out to Claude, OpenAI, or any other model — `transform.py`
-is `openpyxl` code, and `excel_framework.compare_workbooks`/`validate_input`
-are plain cell/formula/style comparison logic. It can be scheduled in cron, a
-CI job, or any plain pipeline with zero AI dependency or network calls.
-
-An LLM (via the `prompts/01_specification.md` … `06_release.md` pipeline) is
-only needed at **development time** — writing or updating `transform.py`
-against a spec — and again later only if:
-
-- the requirements change (new column, new formula — redo SPEC.md → transform.py), or
-- the input becomes unstructured/unpredictable enough to need interpretation
-  rather than fixed rules, which is outside what this architecture (a
-  deterministic script + diff-based proof) is designed for.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dev-time vs
+runtime breakdown.
 
 ## Report
 
@@ -170,17 +163,11 @@ picks up changes live, no reinstall needed while editable).
 
 ## CI
 
-`.github/workflows/tests.yml` runs `pytest` on every push/PR. It does **not**
-use `requirements.txt` as-is, because the `-e ../excel-framework-core`
-relative path only exists in local sibling-folder checkouts, not on a GitHub
-Actions runner (which only checks out this one repository). Instead the
-workflow installs:
-
-- `openpyxl` / `pytest` directly, and
-- `excel-framework-core` from its own GitHub repo, pinned to a release tag:
-  ```
-  pip install "git+https://x-access-token:${{ secrets.CORE_REPO_TOKEN }}@github.com/Sergey-Gromov/excel-framework-core.git@v0.1.0"
-  ```
+`.github/workflows/tests.yml` runs `pytest` on every push/PR. It installs
+`excel-framework-core` from its own GitHub repo pinned to a release tag
+rather than via `requirements.txt` — see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#local-dev-vs-ci-two-install-paths)
+for why local dev and CI need different install paths.
 
 ### `CORE_REPO_TOKEN` secret
 
