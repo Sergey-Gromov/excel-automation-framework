@@ -1,0 +1,144 @@
+# Excel Automation Framework
+
+This is a **task repository**: it implements one specific Excel transformation.
+The reusable diff/validation engine lives in a separate package,
+[`excel-framework-core`](../excel-framework-core), installed as a dependency
+(see `requirements.txt`).
+
+The goal is simple:
+
+> Apply required Excel changes and automatically prove that nothing else changed.
+
+## Project layout
+
+```text
+docs/
+  SPEC.md              Main specification and invariants
+  TASKS.md             Current task for the coding agent
+  TEST_PLAN.md         Test strategy
+  ALLOWED_CHANGES.yml  Allowed workbook changes
+  CHANGELOG.md
+  DESIGN.md
+
+prompts/
+  01_specification.md
+  02_test_plan.md
+  03_implementation.md
+  04_review.md
+  05_regression.md
+  06_release.md
+
+transform.py           Entry point for your transformation (uses openpyxl)
+
+tests/
+  test_expected_output.py
+  test_no_unexpected_changes.py
+  conftest.py
+
+samples/
+  input.xlsx
+  expected_output.xlsx
+  actual_output.xlsx
+
+reports/
+  diff_report.html
+  diff_report.json
+```
+
+The diff engine itself (`compare_workbooks`, `config`, `report`,
+`validate_input`) is not part of this repository — it comes from the
+`excel_framework` package installed from `../excel-framework-core`.
+
+## Install
+
+```bash
+python -m venv .venv
+source .venv/bin/activate      # Linux/macOS
+# .venv\Scripts\activate       # Windows PowerShell
+
+pip install -r requirements.txt   # installs excel-framework-core from ../excel-framework-core, plus openpyxl/pytest
+```
+
+## Validate input file against sample
+
+Before running a transformation, check whether the incoming file matches the expected structure:
+
+```bash
+python -m excel_framework.validate_input samples/input.xlsx path/to/received_file.xlsx
+```
+
+This compares the received file against the sample and writes two reports:
+
+```text
+reports/input_vs_sample.html   # human-readable, colour-coded
+reports/input_vs_sample.json   # machine-readable
+```
+
+The console also prints a summary of every difference (kind, sheet, cell address).
+
+Options:
+
+```text
+--report-dir DIR   Output folder for reports (default: reports/)
+--no-styles        Skip cell style comparison (faster for large files)
+```
+
+Exit code is `0` if no differences found, `1` otherwise — safe to use in CI.
+
+---
+
+## Normal workflow
+
+1. Put your sample source file into `samples/input.xlsx`.
+2. Manually create the correct target result: `samples/expected_output.xlsx`.
+3. Fill `docs/SPEC.md`.
+4. Fill `docs/ALLOWED_CHANGES.yml`.
+5. Implement transformation in `transform.py`.
+6. Run:
+
+```bash
+python transform.py samples/input.xlsx samples/actual_output.xlsx
+pytest
+```
+
+## Important rule
+
+A script is not considered complete just because it runs without errors.
+
+It is complete only when:
+
+```bash
+pytest
+```
+
+passes and the diff report contains no unexpected changes.
+
+## Report
+
+After tests run, reports are written to:
+
+```text
+reports/diff_report.json
+reports/diff_report.html
+```
+
+## Starting a new task
+
+Each Excel transformation gets its own task repository, reusing the same
+`excel-framework-core` engine. To start a new one:
+
+1. Copy this whole folder to a new location (ideally still a sibling of
+   `excel-framework-core`, so the default relative path in `requirements.txt`
+   keeps working — otherwise adjust the `-e ../excel-framework-core` line).
+2. Clear out task-specific state: delete `samples/*.xlsx`, `reports/*`, and
+   reset `docs/SPEC.md` and `docs/ALLOWED_CHANGES.yml` back to their blank
+   templates (an empty `ALLOWED_CHANGES.yml` means nothing is allowed to
+   change yet — start strict).
+3. `pip install -r requirements.txt` in a fresh virtualenv.
+4. Follow the `prompts/01_specification.md` … `06_release.md` pipeline again
+   for the new task.
+
+Improvements to the diff engine itself (new checks, bug fixes) belong in
+`excel-framework-core`, not in a task repository — they immediately benefit
+every task once re-installed (`pip install -e ../excel-framework-core`
+picks up changes live, no reinstall needed while editable).

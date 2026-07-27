@@ -1,0 +1,34 @@
+# List every place where the script is allowed to change the workbook.
+#
+# Sheet names and Excel ranges use normal Excel notation.
+#
+# Examples:
+#
+# allowed_ranges:
+#   - sheet: Orders
+#     range: A1:A1
+#     reason: Rename header
+#   - sheet: Orders
+#     range: H1:H500
+#     reason: New calculated column
+#
+# allowed_columns:
+#   - sheet: Orders
+#     columns: ["H"]
+#     reason: New calculated column
+#
+# allowed_sheets:
+#   - Summary
+#
+# ignored_properties:
+#   - workbook.calculation
+#
+# Start strict. Add permissions only when intentional.
+
+allowed_ranges: []
+
+allowed_columns: []
+
+allowed_sheets: []
+
+ignored_properties: []

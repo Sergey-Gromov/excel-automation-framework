@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+.venv/
+reports/*.json
+reports/*.html
+reports/*.xlsx
+samples/actual_output.xlsx
