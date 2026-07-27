@@ -23,27 +23,41 @@ new task" in the README) that installs the same `excel-framework-core`
 engine rather than copying its code. Bug fixes or new comparison checks are
 made once in `excel-framework-core` and picked up by every task.
 
-## Local dev vs CI: two install paths
+## Local dev vs CI: installing the same way, different auth
 
-The engine is consumed differently depending on where the code runs, because
-a relative filesystem path only makes sense on your own machine:
+`requirements.txt` installs the engine straight from its GitHub repo, pinned
+to a tag — this is location-independent, no sibling-folder requirement:
 
-| | Install source | Why |
-|---|---|---|
-| Local dev | `-e ../excel-framework-core` (in `requirements.txt`) | Editable install — edits to the engine are visible immediately, no reinstall. Requires the two repos to be sibling folders. |
-| CI (GitHub Actions) | `git+https://x-access-token:${{ secrets.CORE_REPO_TOKEN }}@github.com/Sergey-Gromov/excel-framework-core.git@v0.1.0` | The runner only checks out this one repo — no sibling folder exists. Installs a specific tagged release instead. |
+```
+git+https://github.com/Sergey-Gromov/excel-framework-core.git@v0.1.0
+```
 
-`CORE_REPO_TOKEN` is a fine-grained PAT scoped only to `excel-framework-core`
-with `Contents: Read-only`, stored as a repo secret. Full setup/rotation
-steps are in the README's CI section.
+`excel-framework-core` is private, so both local dev and CI need
+authentication to clone it — they just get it differently:
+
+| | How auth is provided |
+|---|---|
+| Local dev | Your own `gh auth setup-git`-configured git credential helper — no token in `requirements.txt` at all, git resolves it transparently. |
+| CI (GitHub Actions) | The runner has no persistent credential helper, so the workflow embeds a token explicitly: `git+https://x-access-token:${{ secrets.CORE_REPO_TOKEN }}@github.com/...`. `CORE_REPO_TOKEN` is a fine-grained PAT scoped only to `excel-framework-core`, `Contents: Read-only`, stored as a repo secret. Full setup/rotation steps are in the README's CI section. |
 
 ### Releasing a new engine version
 
 1. In `excel-framework-core`: commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
-2. In each task repo's `.github/workflows/tests.yml`: bump `@v0.1.0` → `@vX.Y.Z`.
+2. In every task repo that should pick it up: bump `@v0.1.0` → `@vX.Y.Z` in
+   both `requirements.txt` and `.github/workflows/tests.yml`, then
+   `pip install -r requirements.txt` again.
 
-Local dev repos don't need this step — the editable install always tracks
-the engine's current working copy.
+### Actively co-developing the engine
+
+Editing `excel-framework-core` and want changes visible immediately, without
+cutting a tag per edit? Swap the git dependency for a local editable install
+— this is the one case that does require the two repos to be sibling
+folders:
+
+```bash
+pip uninstall excel-framework-core
+pip install -e ../excel-framework-core
+```
 
 ## Where an LLM fits in — and where it doesn't
 

@@ -2,10 +2,11 @@
 
 This is a **task repository**: it implements one specific Excel transformation.
 The reusable diff/validation engine lives in a separate package,
-[`excel-framework-core`](../excel-framework-core), installed as a dependency
-(see `requirements.txt`). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-for how the two repos fit together, local-vs-CI installs, and where an LLM
-is (and isn't) involved.
+[`excel-framework-core`](https://github.com/Sergey-Gromov/excel-framework-core),
+installed as a dependency (see `requirements.txt`) — no particular folder
+layout required, it's pulled straight from GitHub. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the two repos fit
+together, and where an LLM is (and isn't) involved.
 
 The goal is simple:
 
@@ -50,7 +51,7 @@ reports/
 
 The diff engine itself (`compare_workbooks`, `config`, `report`,
 `validate_input`) is not part of this repository — it comes from the
-`excel_framework` package installed from `../excel-framework-core`.
+`excel_framework` package, installed straight from its GitHub repo.
 
 ## Install
 
@@ -59,8 +60,12 @@ python -m venv .venv
 source .venv/bin/activate      # Linux/macOS
 # .venv\Scripts\activate       # Windows PowerShell
 
-pip install -r requirements.txt   # installs excel-framework-core from ../excel-framework-core, plus openpyxl/pytest
+pip install -r requirements.txt   # installs excel-framework-core@v0.1.0 from GitHub, plus openpyxl/pytest
 ```
+
+Requires git access to the private `excel-framework-core` repo — if you're
+logged in via `gh auth setup-git` (see CI section below for token details),
+this just works with no extra configuration.
 
 ## Validate input file against sample
 
@@ -145,9 +150,8 @@ reports/diff_report.html
 Each Excel transformation gets its own task repository, reusing the same
 `excel-framework-core` engine. To start a new one:
 
-1. Copy this whole folder to a new location (ideally still a sibling of
-   `excel-framework-core`, so the default relative path in `requirements.txt`
-   keeps working — otherwise adjust the `-e ../excel-framework-core` line).
+1. Copy this whole folder to a new location — anywhere; `requirements.txt`
+   installs the engine from GitHub, so there's no folder-layout requirement.
 2. Clear out task-specific state: delete `samples/*.xlsx`, `reports/*`, and
    reset `docs/SPEC.md` and `docs/ALLOWED_CHANGES.yml` back to their blank
    templates (an empty `ALLOWED_CHANGES.yml` means nothing is allowed to
@@ -157,17 +161,34 @@ Each Excel transformation gets its own task repository, reusing the same
    for the new task.
 
 Improvements to the diff engine itself (new checks, bug fixes) belong in
-`excel-framework-core`, not in a task repository — they immediately benefit
-every task once re-installed (`pip install -e ../excel-framework-core`
-picks up changes live, no reinstall needed while editable).
+`excel-framework-core`, not in a task repository. To publish them, tag a new
+release there and bump the `@vX.Y.Z` reference in `requirements.txt` (and in
+`.github/workflows/tests.yml`) of every task repo that should pick it up —
+see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the release steps.
+
+### Actively co-developing the engine and a task together
+
+If you're editing `excel-framework-core` and want changes reflected
+immediately (no tag/reinstall per edit), swap the git dependency for a local
+editable install — this does require the two repos to sit next to each
+other:
+
+```bash
+pip uninstall excel-framework-core
+pip install -e ../excel-framework-core
+```
+
+Revert to the `git+https://…@vX.Y.Z` line in `requirements.txt` once you're
+done and have cut a new tag.
 
 ## CI
 
 `.github/workflows/tests.yml` runs `pytest` on every push/PR. It installs
-`excel-framework-core` from its own GitHub repo pinned to a release tag
-rather than via `requirements.txt` — see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#local-dev-vs-ci-two-install-paths)
-for why local dev and CI need different install paths.
+`excel-framework-core` the same way `requirements.txt` does locally — a
+release tag from its own GitHub repo — but since the runner has no
+`gh auth setup-git` credential helper, it must embed a token explicitly. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#local-dev-vs-ci-installing-the-same-way-different-auth)
+for details.
 
 ### `CORE_REPO_TOKEN` secret
 
