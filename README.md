@@ -113,6 +113,31 @@ pytest
 
 passes and the diff report contains no unexpected changes.
 
+## Do you need Claude/an LLM to run this?
+
+No — only to *build* it. Once `transform.py` is implemented and `pytest`
+passes, running the transformation is a plain, deterministic Python script:
+
+```bash
+python -m excel_framework.validate_input samples/input.xlsx new_file.xlsx   # optional pre-check
+python transform.py new_file.xlsx output.xlsx
+pytest
+```
+
+None of this calls out to Claude, OpenAI, or any other model — `transform.py`
+is `openpyxl` code, and `excel_framework.compare_workbooks`/`validate_input`
+are plain cell/formula/style comparison logic. It can be scheduled in cron, a
+CI job, or any plain pipeline with zero AI dependency or network calls.
+
+An LLM (via the `prompts/01_specification.md` … `06_release.md` pipeline) is
+only needed at **development time** — writing or updating `transform.py`
+against a spec — and again later only if:
+
+- the requirements change (new column, new formula — redo SPEC.md → transform.py), or
+- the input becomes unstructured/unpredictable enough to need interpretation
+  rather than fixed rules, which is outside what this architecture (a
+  deterministic script + diff-based proof) is designed for.
+
 ## Report
 
 After tests run, reports are written to:
