@@ -35,11 +35,14 @@ prompts/
 transform.py            Entry point for your transformation (uses openpyxl)
 run_production.py       Production wrapper: validates input structure before
                         transforming, quarantines drifted files instead
+run_batch.py            Batch wrapper: validates and transforms every top-level
+                        .xlsx file in an input directory
 
 tests/
   test_expected_output.py
   test_no_unexpected_changes.py
   test_run_production.py
+  test_run_batch.py
   conftest.py
 
 samples/
@@ -129,6 +132,32 @@ involved.
 
 Options: `--sample PATH` (default `samples/input.xlsx`), `--report-dir DIR`
 (default `reports/`), `--needs-review-dir DIR` (default `needs_review/`).
+
+## Running a batch directory
+
+`run_batch.py` processes every `.xlsx` workbook directly inside an input
+directory:
+
+```bash
+python run_batch.py path/to/input_dir path/to/output_dir
+```
+
+- Processes only top-level `.xlsx` files in deterministic alphabetical order.
+- Ignores `~$` temporary files, non-`.xlsx` files, and subdirectories.
+- Writes each result to `output_dir/<same filename>.xlsx`.
+- Validates each file against the sample before transforming it.
+- Writes per-file reports under `reports/<file stem>/`.
+- Quarantines drifted files under `needs_review/<file stem>/...` and continues.
+- Does not overwrite existing output files unless `--overwrite` is supplied.
+- With `--overwrite`, replaces existing outputs through an atomic temporary
+  file in the output directory.
+
+Exit code `0` means every discovered workbook transformed successfully, or no
+eligible workbook was found. Exit code `1` means at least one workbook was
+rejected or failed.
+
+Options: `--sample PATH`, `--report-dir DIR`, `--needs-review-dir DIR`, and
+`--overwrite`.
 
 ---
 

@@ -3,13 +3,19 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from excel_framework.validate_input import validate
 from openpyxl import load_workbook
 
-from transform import SHEET_NAME, transform, validate_structure
+from transform import (
+    SHEET_NAME,
+    prepare_validation_input,
+    transform,
+    validate_structure,
+)
 
 DEFAULT_SAMPLE = "samples/input.xlsx"
 DEFAULT_OUTPUT = "samples/actual_output.xlsx"
@@ -31,6 +37,10 @@ def run(
     quarantine it for human review instead of running the transformation —
     a silent structural mismatch is worse than a loud refusal.
 
+    Before comparison, only the three dated row-9 headers are normalized to
+    the sample dates so ordinary monthly date changes do not trigger
+    quarantine. All other structural drift is still rejected.
+
     Returns 0 if the transformation ran, 1 if the file was quarantined.
     """
     input_path = Path(input_path)
@@ -38,17 +48,28 @@ def run(
     report_dir = Path(report_dir)
     needs_review_dir = Path(needs_review_dir)
 
-    diff_count = validate(sample_path, input_path, report_dir=report_dir)
-
+    diff_count = 0
     structural_error = None
     try:
-        wb = load_workbook(input_path)
-        if SHEET_NAME not in wb.sheetnames:
-            structural_error = f"Лист '{SHEET_NAME}' не найден во входной книге."
-        else:
-            validate_structure(wb[SHEET_NAME])
+        with tempfile.TemporaryDirectory(prefix="production_validation_") as tmp_dir:
+            validation_input_path = prepare_validation_input(
+                input_path,
+                sample_path,
+                Path(tmp_dir),
+            )
+            diff_count = validate(sample_path, validation_input_path, report_dir=report_dir)
     except ValueError as exc:
         structural_error = str(exc)
+
+    if structural_error is None:
+        try:
+            wb = load_workbook(input_path)
+            if SHEET_NAME not in wb.sheetnames:
+                structural_error = f"Лист '{SHEET_NAME}' не найден во входной книге."
+            else:
+                validate_structure(wb[SHEET_NAME])
+        except ValueError as exc:
+            structural_error = str(exc)
 
     if diff_count > 0 or structural_error:
         needs_review_dir.mkdir(parents=True, exist_ok=True)

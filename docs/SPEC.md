@@ -268,8 +268,10 @@ The task is complete only when:
   placement, string dates, invalid dates, and missing or duplicate headers.
 - Direct input-vs-actual tests verify that no unrelated cells, styles, merged
   ranges, or dimensions changed.
-- `pytest` passes.
+- `pytest` passes, including batch regression tests.
 - Production execution and quarantine behavior are documented.
+- `run_batch.py` processes a directory of workbooks without changing the
+  single-workbook transformation rules.
 
 Routine production command:
 
@@ -285,3 +287,33 @@ uses `sh513.xlsx!B1` as the replacement date.
 Exit code `0` means the incoming file matched the sample structure and the
 transformation ran. Exit code `1` means structural drift was detected and the
 file was quarantined under `needs_review/` without being transformed.
+
+## Batch production command
+
+Routine batch command:
+
+```bash
+python run_batch.py path/to/input_dir path/to/output_dir
+```
+
+Batch mode must:
+
+- process only `.xlsx` files directly inside the input directory
+- ignore `~$` temporary files, non-`.xlsx` files, and subdirectories
+- process files in deterministic alphabetical order
+- preserve input filenames exactly in the output directory
+- never modify or overwrite source files
+- require the input and output directories to be different after path
+  resolution
+- validate each workbook independently using the same production validation
+  flow as `run_production.py`
+- write per-file reports under `reports/<file stem>/`
+- quarantine drifted files under `needs_review/<file stem>/...`
+- continue processing after rejection or failure
+- catch unexpected per-file errors and continue with remaining files
+- preserve existing output files unless `--overwrite` is supplied
+- replace existing output files atomically when `--overwrite` is supplied
+
+Batch exit code `0` means every discovered workbook transformed successfully,
+or no eligible workbook was found. Batch exit code `1` means at least one
+workbook was rejected or failed.
