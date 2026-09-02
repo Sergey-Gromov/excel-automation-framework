@@ -7,8 +7,9 @@ from datetime import datetime
 from pathlib import Path
 
 from excel_framework.validate_input import validate
+from openpyxl import load_workbook
 
-from transform import transform
+from transform import SHEET_NAME, transform, validate_structure
 
 DEFAULT_SAMPLE = "samples/input.xlsx"
 DEFAULT_OUTPUT = "samples/actual_output.xlsx"
@@ -39,7 +40,17 @@ def run(
 
     diff_count = validate(sample_path, input_path, report_dir=report_dir)
 
-    if diff_count > 0:
+    structural_error = None
+    try:
+        wb = load_workbook(input_path)
+        if SHEET_NAME not in wb.sheetnames:
+            structural_error = f"Лист '{SHEET_NAME}' не найден во входной книге."
+        else:
+            validate_structure(wb[SHEET_NAME])
+    except ValueError as exc:
+        structural_error = str(exc)
+
+    if diff_count > 0 or structural_error:
         needs_review_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         case_dir = needs_review_dir / f"{stamp}_{input_path.stem}"
@@ -51,10 +62,16 @@ def run(
             if report_file.exists():
                 shutil.copy2(report_file, case_dir / report_name)
 
+        reason = (
+            f"({diff_count} difference(s))"
+            if diff_count > 0
+            else "structural validation failed"
+        )
         print(
             f"REJECTED: '{input_path}' does not match the expected structure "
-            f"({diff_count} difference(s)). Not transformed.\n"
-            f"Quarantined to: {case_dir}\n"
+            f"{reason}. Not transformed.\n"
+            + (f"Detail: {structural_error}\n" if structural_error else "")
+            + f"Quarantined to: {case_dir}\n"
             f"Report: {case_dir / 'input_vs_sample.html'}",
             file=sys.stderr,
         )

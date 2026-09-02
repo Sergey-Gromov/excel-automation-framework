@@ -2,78 +2,167 @@
 
 ## Goal
 
-Describe what the script must do to the Excel workbook.
-
-Example:
-
-> Transform the source workbook by renaming selected headers, inserting calculated columns, and reordering selected columns while preserving all unrelated workbook content.
+Transform the source workbook by moving two year-adjustment columns next to the
+accrued-total column, shifting the intervening columns right by two positions,
+normalizing four date columns to `dd.mm.yyyy` display, and adding two row-7
+`SUBTOTAL` formulas. All unrelated workbook content must be preserved.
 
 ---
 
 ## Source workbook
 
 - Input file: `samples/input.xlsx`
-- Expected result: `samples/expected_output.xlsx`
+- Reference result: `samples/expected_output.xlsx`
 - Actual generated result: `samples/actual_output.xlsx`
+- Sheet: `Ликвидность`
+- Header row: `9`
+- Expected dimensions: `100` rows and `183` columns (`GA`)
+
+The reference result contains known accidental differences and is therefore not
+used as a full-cell equality target. See "Known accidental reference differences".
+
+---
+
+## Column identification
+
+Columns are identified by row-9 header text after stripping surrounding spaces.
+The transformation rejects input if any required header is missing or is not in
+the expected sample position.
+
+Required headers and sample positions:
+
+| Header | Sample column |
+|---|---:|
+| `Дата заключения` | `I` / 9 |
+| `Дата расторжения договора` | `J` / 10 |
+| `ДЗ начальная дата образования` | `S` / 19 |
+| `ДЗ конечная дата образования` | first occurrence, `T` / 20 |
+| `Начислено нарастающим итогом с начала периода с учетом всех перерасчетов` | `BV` / 74 |
+| `Оплачено нарастающим итогом с начала периода` | `BW` / 75 |
+| `Сумма годовой корректировки` | `FF` / 162 |
+| `Перерасчет суммы годовой корректировки` | `FG` / 163 |
+
+The workbook contains a second `ДЗ конечная дата образования` header at `Y` / 25.
+Only the first occurrence at `T` / 20 is normalized.
 
 ---
 
 ## Required changes
 
-### Change 1
+### Change 1: Move year-adjustment columns
 
-**Description:**  
-...
+**Sheet:** `Ликвидность`
 
-**Sheet:**  
-...
+**Operation:**
 
-**Range / columns:**  
-...
+- Move source column `FF` / 162 (`Сумма годовой корректировки`) to final column
+  `BW` / 75.
+- Move source column `FG` / 163 (`Перерасчет суммы годовой корректировки`) to
+  final column `BX` / 76.
+- Shift source columns `BW:FE` / 75:161 right by two columns to final
+  `BY:FG` / 77:163.
+- Leave source columns `1:74` and `164:183` in their original positions.
 
-**Expected result:**  
-...
+**Final column mapping:**
+
+| Final columns | Source columns |
+|---|---|
+| `1:74` | `1:74` |
+| `75` / `BW` | `162` / `FF` |
+| `76` / `BX` | `163` / `FG` |
+| `77:163` / `BY:FG` | `75:161` / `BW:FE` |
+| `164:183` | `164:183` |
+
+The output must remain `183` columns wide. It must not introduce the two blank
+columns present in the accidental reference workbook.
+
+### Change 2: Preserve and translate formulas in moved columns
+
+**Sheet:** `Ликвидность`
+
+**Formula semantics:**
+
+- Formulas remain formulas.
+- Formula references are remapped to the final positions of the referenced
+  logical columns.
+- String constants inside formulas are not modified.
+- Existing row-7 `SUBTOTAL` formulas keep the `10:101` row range and are updated
+  to their final column letters.
+- Row-9 month formulas such as `="Июль 2023"` are moved unchanged as formula
+  strings.
+
+Examples:
+
+| Source formula | Final cell | Final formula |
+|---|---:|---|
+| `FF7`: `=SUBTOTAL(109,FF10:FF101)` | `BW7` | `=SUBTOTAL(109,BW10:BW101)` |
+| `FG7`: `=SUBTOTAL(109,FG10:FG101)` | `BX7` | `=SUBTOTAL(109,BX10:BX101)` |
+| `BW7`: `=SUBTOTAL(109,BW10:BW101)` | `BY7` | `=SUBTOTAL(109,BY10:BY101)` |
+| `FE7`: `=SUBTOTAL(109,FE10:FE101)` | `FG7` | `=SUBTOTAL(109,FG10:FG101)` |
+
+### Change 3: Add row-7 totals
+
+**Sheet:** `Ликвидность`
+
+**Cells:**
+
+| Cell | Formula | Number format |
+|---|---|---|
+| `BB7` | `=SUBTOTAL(109,BB10:BB101)` | `#,##0.00` |
+| `CV7` | `=SUBTOTAL(109,CV10:CV101)` | `#,##0.00` |
+
+These are final workbook positions, not source header names.
+
+### Change 4: Normalize date display formats
+
+**Sheet:** `Ликвидность`
+
+**Columns:** `I`, `J`, `S`, and first `T`
+
+**Rows:** `10:100`
+
+**Behavior:**
+
+- Keep stored values as native Excel dates or `None`.
+- Do not convert dates to text.
+- Set number format to `dd.mm.yyyy`.
 
 ---
 
-### Change 2
+## Preserved workbook content
 
-**Description:**  
-...
+The transformation must preserve, within the moved/shifted columns:
 
-**Sheet:**  
-...
+- cell values
+- formulas
+- number formats, except explicitly changed date and new-total formats
+- fonts, fills, borders, alignment, and protection
+- hyperlinks and comments, if present
+- column widths, hidden state, best-fit state, and outline levels
+- row heights
+- merged ranges, remapped through the final column mapping
 
-**Range / columns:**  
-...
+Existing merged ranges and their expected remapped positions:
 
-**Expected result:**  
-...
+| Source merged range | Final merged range |
+|---|---|
+| `DF8:EM8` | `DH8:EO8` |
+| `EN8:EP8` | `EP8:ER8` |
 
----
+The transformation must not change:
 
-## Invariants
-
-The script must not change anything except explicitly allowed changes.
-
-Forbidden unintended changes include:
-
-- Removing or renaming sheets
-- Changing data outside allowed ranges
-- Removing existing formulas
-- Changing formulas outside allowed ranges
-- Changing styles outside allowed ranges
-- Changing column widths
-- Changing row heights
-- Changing merged cells
-- Changing hidden rows or columns
-- Changing comments
-- Changing hyperlinks
-- Changing named ranges
-- Changing Excel tables
-- Changing filters
-- Changing frozen panes
-- Changing workbook-level metadata unless required
+- sheet names or sheet order
+- unrelated cell values
+- unrelated formulas
+- unrelated styles
+- unrelated column widths or row heights
+- hidden rows or columns
+- comments or hyperlinks
+- named ranges
+- Excel tables
+- filters
+- frozen panes
+- workbook-level metadata except ordinary save behavior
 
 ---
 
@@ -85,14 +174,60 @@ The authoritative allowed-change list is stored in:
 docs/ALLOWED_CHANGES.yml
 ```
 
+Allowed ranges:
+
+- `Ликвидность!BW1:FG100` for the moved/shifted column block
+- `Ликвидность!I10:I100` for date display format
+- `Ликвидность!J10:J100` for date display format
+- `Ликвидность!S10:S100` for date display format
+- `Ликвидность!T10:T100` for date display format
+- `Ликвидность!BB7:BB7` for the new row-7 formula
+- `Ликвидность!CV7:CV7` for the new row-7 formula
+
+Merged-range changes are required by the column move but are not expressible in
+the current `allowed_ranges` schema. They are verified directly by tests.
+
+---
+
+## Known accidental reference differences
+
+`samples/expected_output.xlsx` was reviewed and contains differences that are
+not part of the requested transformation:
+
+- It has `185` columns, including blank columns `164` and `165`.
+- Most row-7 formulas are replaced by static values that do not broadly match
+  the input column sums or cached formula values.
+- Row-9 month formulas are converted to plain text.
+- Some header dates were changed to `30.06.2026`.
+- Date columns `I`, `J`, `S`, and `T` are stored as slash-separated text
+  `DD/MM/YYYY`, which conflicts with the approved native-date `dd.mm.yyyy`
+  behavior.
+
+Therefore the completion target is the intended transformation contract plus
+focused tests, not full equality with `samples/expected_output.xlsx`.
+
 ---
 
 ## Definition of done
 
 The task is complete only when:
 
-- All required changes are implemented
-- `samples/actual_output.xlsx` matches `samples/expected_output.xlsx`
-- No unexpected differences are reported
-- `pytest` passes
-- Diff report is generated
+- `transform.py` applies only the changes described above.
+- `samples/actual_output.xlsx` is generated from `samples/input.xlsx`.
+- The output remains `183` columns wide.
+- Moved, shifted, formula, date-format, merged-range, and style-preservation
+  tests pass.
+- Direct input-vs-actual tests verify that no unrelated cells, styles, merged
+  ranges, or dimensions changed.
+- `pytest` passes.
+- Production execution and quarantine behavior are documented.
+
+Routine production command:
+
+```bash
+python run_production.py path/to/incoming.xlsx path/to/output.xlsx
+```
+
+Exit code `0` means the incoming file matched the sample structure and the
+transformation ran. Exit code `1` means structural drift was detected and the
+file was quarantined under `needs_review/` without being transformed.

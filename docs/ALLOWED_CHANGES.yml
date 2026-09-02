@@ -1,31 +1,31 @@
-# List every place where the script is allowed to change the workbook.
+# Intentional changes for the Ликвидность transformation.
 #
-# Sheet names and Excel ranges use normal Excel notation.
-#
-# Examples:
-#
-# allowed_ranges:
-#   - sheet: Orders
-#     range: A1:A1
-#     reason: Rename header
-#   - sheet: Orders
-#     range: H1:H500
-#     reason: New calculated column
-#
-# allowed_columns:
-#   - sheet: Orders
-#     columns: ["H"]
-#     reason: New calculated column
-#
-# allowed_sheets:
-#   - Summary
-#
-# ignored_properties:
-#   - workbook.calculation
-#
-# Start strict. Add permissions only when intentional.
+# The moved/shifted block is final columns BW:FG (75:163), rows 1:100.
+# Source columns FF:FG (162:163) move to BW:BX (75:76).
+# Source columns BW:FE (75:161) shift right to BY:FG (77:163).
 
-allowed_ranges: []
+allowed_ranges:
+  - sheet: Ликвидность
+    range: BW1:FG100
+    reason: Move FF/FG to BW/BX and shift BW:FE right by two columns
+  - sheet: Ликвидность
+    range: I10:I100
+    reason: Display Дата заключения as dd.mm.yyyy while keeping native date values
+  - sheet: Ликвидность
+    range: J10:J100
+    reason: Display Дата расторжения договора as dd.mm.yyyy while keeping native date values
+  - sheet: Ликвидность
+    range: S10:S100
+    reason: Display ДЗ начальная дата образования as dd.mm.yyyy while keeping native date values
+  - sheet: Ликвидность
+    range: T10:T100
+    reason: Display first ДЗ конечная дата образования as dd.mm.yyyy while keeping native date values
+  - sheet: Ликвидность
+    range: BB7:BB7
+    reason: Add SUBTOTAL(109, BB10:BB101) row-7 total
+  - sheet: Ликвидность
+    range: CV7:CV7
+    reason: Add SUBTOTAL(109, CV10:CV101) row-7 total
 
 allowed_columns: []
 
