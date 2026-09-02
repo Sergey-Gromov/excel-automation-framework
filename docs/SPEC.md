@@ -4,8 +4,9 @@
 
 Transform the source workbook by moving two year-adjustment columns next to the
 accrued-total column, shifting the intervening columns right by two positions,
-normalizing four date columns to `dd.mm.yyyy` display, and adding two row-7
-`SUBTOTAL` formulas. All unrelated workbook content must be preserved.
+normalizing four date columns to `dd.mm.yyyy` display, adding two row-7
+`SUBTOTAL` formulas, and replacing the date in three row-9 headers with the
+date from `sh513.xlsx!B1`. All unrelated workbook content must be preserved.
 
 ---
 
@@ -14,6 +15,9 @@ normalizing four date columns to `dd.mm.yyyy` display, and adding two row-7
 - Input file: `samples/input.xlsx`
 - Reference result: `samples/expected_output.xlsx`
 - Actual generated result: `samples/actual_output.xlsx`
+- Date source: `sh513.xlsx`
+- Date source cell: `Ликвидность!B1`
+- Replacement date format: `DD.MM.YYYY`
 - Sheet: `Ликвидность`
 - Header row: `9`
 - Expected dimensions: `100` rows and `183` columns (`GA`)
@@ -44,6 +48,16 @@ Required headers and sample positions:
 
 The workbook contains a second `ДЗ конечная дата образования` header at `Y` / 25.
 Only the first occurrence at `T` / 20 is normalized.
+
+Dated headers are identified by a stable text prefix plus a `DD.MM.YYYY` date
+in row `9`. The transformation rejects input if a dated header is missing,
+duplicated, or moved from its sample position.
+
+| Header prefix | Source column | Final column |
+|---|---:|---:|
+| `БУ ДЗ всего на` | `CS` / 97 | `CU` / 99 |
+| `Сумма просроченной ДЗ с учетом сроков оплаты счетов по состоянию на` | `CT` / 98 | `CV` / 100 |
+| `БУ Авансы на` | `CW` / 101 | `CY` / 103 |
 
 ---
 
@@ -127,6 +141,34 @@ These are final workbook positions, not source header names.
 - Do not convert dates to text.
 - Set number format to `dd.mm.yyyy`.
 
+### Change 5: Replace dates in three row-9 headers
+
+**Sheet:** `Ликвидность`
+
+**Date source:** `sh513.xlsx`, sheet `Ликвидность`, cell `B1`, formatted as
+`DD.MM.YYYY`.
+
+**Cells:**
+
+| Source cell | Final cell | Header prefix |
+|---|---|---|
+| `CS9` | `CU9` | `БУ ДЗ всего на` |
+| `CT9` | `CV9` | `Сумма просроченной ДЗ с учетом сроков оплаты счетов по состоянию на` |
+| `CW9` | `CY9` | `БУ Авансы на` |
+
+**Behavior:**
+
+- Identify each header by its stable prefix, not by the full date-containing
+  text.
+- Replace only the existing `DD.MM.YYYY` portion with the date from
+  `sh513.xlsx!B1`.
+- Preserve all other header text, including trailing spaces.
+- Preserve the header cell number format and style.
+- Apply the replacement before the column-move snapshot so the moved headers
+  carry the new date to their final positions.
+- Fail with an actionable error if `sh513.xlsx!B1` is missing, is not a date,
+  or cannot be parsed.
+
 ---
 
 ## Preserved workbook content
@@ -183,6 +225,9 @@ Allowed ranges:
 - `Ликвидность!T10:T100` for date display format
 - `Ликвидность!BB7:BB7` for the new row-7 formula
 - `Ликвидность!CV7:CV7` for the new row-7 formula
+- `Ликвидность!CU9:CU9` for the replaced `БУ ДЗ всего на` header date
+- `Ликвидность!CV9:CV9` for the replaced просроченная ДЗ header date
+- `Ликвидность!CY9:CY9` for the replaced `БУ Авансы на` header date
 
 Merged-range changes are required by the column move but are not expressible in
 the current `allowed_ranges` schema. They are verified directly by tests.
@@ -198,7 +243,9 @@ not part of the requested transformation:
 - Most row-7 formulas are replaced by static values that do not broadly match
   the input column sums or cached formula values.
 - Row-9 month formulas are converted to plain text.
-- Some header dates were changed to `30.06.2026`.
+- The `CU9`, `CV9`, and `CY9` header dates in the reference workbook match the
+  now-intentional Change 5 behavior. Any other header-date differences remain
+  accidental.
 - Date columns `I`, `J`, `S`, and `T` are stored as slash-separated text
   `DD/MM/YYYY`, which conflicts with the approved native-date `dd.mm.yyyy`
   behavior.
@@ -217,6 +264,8 @@ The task is complete only when:
 - The output remains `183` columns wide.
 - Moved, shifted, formula, date-format, merged-range, and style-preservation
   tests pass.
+- Date-header replacement tests cover normal rows, blank values, formula
+  placement, string dates, invalid dates, and missing or duplicate headers.
 - Direct input-vs-actual tests verify that no unrelated cells, styles, merged
   ranges, or dimensions changed.
 - `pytest` passes.
@@ -227,6 +276,11 @@ Routine production command:
 ```bash
 python run_production.py path/to/incoming.xlsx path/to/output.xlsx
 ```
+
+Before validation, `run_production.py` normalizes only the three dated row-9
+headers to the sample dates. This allows ordinary monthly date changes to pass
+the gate while still detecting structural drift. The transformation itself
+uses `sh513.xlsx!B1` as the replacement date.
 
 Exit code `0` means the incoming file matched the sample structure and the
 transformation ran. Exit code `1` means structural drift was detected and the

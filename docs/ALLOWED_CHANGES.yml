@@ -26,6 +26,15 @@ allowed_ranges:
   - sheet: Ликвидность
     range: CV7:CV7
     reason: Add SUBTOTAL(109, CV10:CV101) row-7 total
+  - sheet: Ликвидность
+    range: CU9:CU9
+    reason: Replace the date in the БУ ДЗ всего на header with sh513.xlsx!B1
+  - sheet: Ликвидность
+    range: CV9:CV9
+    reason: Replace the date in the просроченная ДЗ header with sh513.xlsx!B1
+  - sheet: Ликвидность
+    range: CY9:CY9
+    reason: Replace the date in the БУ Авансы на header with sh513.xlsx!B1
 
 allowed_columns: []
 

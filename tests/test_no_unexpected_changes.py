@@ -1,3 +1,4 @@
+from pathlib import Path
 from xml.etree import ElementTree
 
 from openpyxl import load_workbook
@@ -5,6 +6,9 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.cell import range_boundaries
 
 import transform
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _style_signature(style):
@@ -39,6 +43,11 @@ def test_no_unexpected_changes_from_input(paths):
 
     date_cols = set(transform.DATE_COLUMNS.values())
     new_formula_coords = set(transform.NEW_FORMULAS)
+    dated_final_columns = {
+        transform.final_for_source_column(col): prefix
+        for col, prefix in transform.DATED_HEADER_RULES
+    }
+    replacement_date = transform.read_replacement_date(ROOT / "sh513.xlsx")
     style_attrs = ("font", "fill", "border", "alignment", "protection")
 
     for row in range(1, transform.EXPECTED_MAX_ROW + 1):
@@ -49,6 +58,12 @@ def test_no_unexpected_changes_from_input(paths):
 
             if actual_cell.coordinate in transform.NEW_FORMULAS:
                 expected_value = transform.NEW_FORMULAS[actual_cell.coordinate]
+            elif row == transform.HEADER_ROW and final_col in dated_final_columns:
+                expected_value = transform.replace_date_in_header(
+                    source_cell.value,
+                    dated_final_columns[final_col],
+                    replacement_date,
+                )
             else:
                 expected_value = source_cell.value
                 if isinstance(expected_value, str) and expected_value.startswith("="):

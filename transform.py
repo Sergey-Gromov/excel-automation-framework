@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import re
 from copy import copy
+from datetime import date, datetime
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -14,6 +15,17 @@ SHEET_NAME = "Ликвидность"
 HEADER_ROW = 9
 EXPECTED_MAX_ROW = 100
 EXPECTED_MAX_COL = 183
+
+DEFAULT_DATE_SOURCE = Path(__file__).resolve().parent / "sh513.xlsx"
+DATE_SOURCE_CELL = "B1"
+REPLACEMENT_DATE_FORMAT = "%d.%m.%Y"
+_DATE_TEXT = r"\d{2}\.\d{2}\.\d{4}"
+
+DATED_HEADER_RULES = (
+    (97, "БУ ДЗ всего на"),
+    (98, "Сумма просроченной ДЗ с учетом сроков оплаты счетов по состоянию на"),
+    (101, "БУ Авансы на"),
+)
 
 DATE_COLUMNS = {
     "Дата заключения": 9,
@@ -103,6 +115,144 @@ def _header_at(ws, col: int) -> str | None:
     return value.strip()
 
 
+def _dated_header_pattern(prefix: str) -> re.Pattern[str]:
+    return re.compile(re.escape(prefix) + r"(\s+)(" + _DATE_TEXT + r")")
+
+
+def _match_dated_header(value, prefix: str) -> re.Match[str] | None:
+    if not isinstance(value, str) or not value.lstrip().startswith(prefix):
+        return None
+    return _dated_header_pattern(prefix).search(value)
+
+
+def replace_date_in_header(value: str, prefix: str, new_date: str) -> str:
+    pattern = _dated_header_pattern(prefix)
+    return pattern.sub(lambda m: f"{prefix}{m.group(1)}{new_date}", value, count=1)
+
+
+def read_replacement_date(date_source_path: str | Path) -> str:
+    path = Path(date_source_path)
+    if not path.exists():
+        raise ValueError(f"Файл с датой '{path}' не найден.")
+
+    wb = load_workbook(path, data_only=False)
+    if SHEET_NAME not in wb.sheetnames:
+        raise ValueError(f"Лист '{SHEET_NAME}' не найден в файле с датой '{path}'.")
+
+    value = wb[SHEET_NAME][DATE_SOURCE_CELL].value
+    if isinstance(value, str) and value.startswith("="):
+        wb = load_workbook(path, data_only=True)
+        value = wb[SHEET_NAME][DATE_SOURCE_CELL].value
+
+    if isinstance(value, datetime):
+        parsed = value.date()
+    elif isinstance(value, date):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        for source_format in ("%d.%m.%Y", "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(text, source_format).strftime(REPLACEMENT_DATE_FORMAT)
+            except ValueError:
+                continue
+        raise ValueError(
+            f"Не удалось распознать дату в {path}!{DATE_SOURCE_CELL}: '{text}'."
+        )
+    else:
+        raise ValueError(
+            f"Не удалось получить дату из {path}!{DATE_SOURCE_CELL}: значение {value!r}."
+        )
+
+    return parsed.strftime(REPLACEMENT_DATE_FORMAT)
+
+
+def validate_dated_headers(ws) -> None:
+    expected_by_prefix = {prefix: col for col, prefix in DATED_HEADER_RULES}
+
+    for col, prefix in DATED_HEADER_RULES:
+        value = ws.cell(HEADER_ROW, col).value
+        if _match_dated_header(value, prefix) is None:
+            raise ValueError(
+                f"Заголовок '{prefix}' с датой не найден в "
+                f"{get_column_letter(col)}{HEADER_ROW}."
+            )
+
+    for col in range(1, ws.max_column + 1):
+        value = ws.cell(HEADER_ROW, col).value
+        if not isinstance(value, str):
+            continue
+        for prefix, expected_col in expected_by_prefix.items():
+            if _match_dated_header(value, prefix) and col != expected_col:
+                raise ValueError(
+                    f"Заголовок '{prefix}' с датой найден в "
+                    f"{get_column_letter(col)}{HEADER_ROW}, ожидается "
+                    f"{get_column_letter(expected_col)}{HEADER_ROW}."
+                )
+
+
+def replace_dated_headers(ws, new_date: str) -> None:
+    for col, prefix in DATED_HEADER_RULES:
+        cell = ws.cell(HEADER_ROW, col)
+        value = cell.value
+        if _match_dated_header(value, prefix) is None:
+            raise ValueError(
+                f"Заголовок '{prefix}' с датой не найден в "
+                f"{get_column_letter(col)}{HEADER_ROW}."
+            )
+        cell.value = replace_date_in_header(value, prefix, new_date)
+
+
+def _sample_dated_header_dates(ws) -> dict[str, str]:
+    dates: dict[str, str] = {}
+    for col, prefix in DATED_HEADER_RULES:
+        value = ws.cell(HEADER_ROW, col).value
+        match = _match_dated_header(value, prefix)
+        if match is None:
+            raise ValueError(
+                f"В образце не найден заголовок '{prefix}' с датой в "
+                f"{get_column_letter(col)}{HEADER_ROW}."
+            )
+        dates[prefix] = match.group(2)
+    return dates
+
+
+def prepare_validation_input(
+    input_path: str | Path,
+    sample_path: str | Path,
+    temp_dir: str | Path,
+) -> Path:
+    input_path = Path(input_path)
+    sample_path = Path(sample_path)
+    temp_dir = Path(temp_dir)
+
+    sample_wb = load_workbook(sample_path, data_only=False)
+    if SHEET_NAME not in sample_wb.sheetnames:
+        raise ValueError(f"Лист '{SHEET_NAME}' не найден в образце '{sample_path}'.")
+    sample_dates = _sample_dated_header_dates(sample_wb[SHEET_NAME])
+
+    wb = load_workbook(input_path, data_only=False)
+    if SHEET_NAME not in wb.sheetnames:
+        raise ValueError(f"Лист '{SHEET_NAME}' не найден во входной книге '{input_path}'.")
+    ws = wb[SHEET_NAME]
+
+    changed = False
+    for col, prefix in DATED_HEADER_RULES:
+        cell = ws.cell(HEADER_ROW, col)
+        value = cell.value
+        match = _match_dated_header(value, prefix)
+        if match is not None and match.group(2) != sample_dates[prefix]:
+            cell.value = replace_date_in_header(value, prefix, sample_dates[prefix])
+            changed = True
+
+    if not changed:
+        return input_path
+
+    normalized_path = temp_dir / input_path.name
+    normalized_path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(normalized_path)
+    return normalized_path
+
+
 def validate_structure(ws) -> None:
     if ws.max_row != EXPECTED_MAX_ROW:
         raise ValueError(
@@ -128,6 +278,8 @@ def validate_structure(ws) -> None:
                 f"Заголовок в {get_column_letter(col)}{HEADER_ROW} должен быть "
                 f"'{name}', фактически '{actual}'."
             )
+
+    validate_dated_headers(ws)
 
 
 def _snapshot_column_dimensions(ws, max_col: int) -> dict[int, tuple]:
@@ -166,9 +318,16 @@ def _remap_merged_ranges(ws, original_ranges: list[str]) -> None:
         ws.merge_cells(remapped)
 
 
-def transform(input_path: str | Path, output_path: str | Path) -> None:
+def transform(
+    input_path: str | Path,
+    output_path: str | Path,
+    date_source_path: str | Path | None = None,
+) -> None:
     input_path = Path(input_path)
     output_path = Path(output_path)
+    date_source_path = (
+        Path(date_source_path) if date_source_path is not None else DEFAULT_DATE_SOURCE
+    )
 
     if input_path.resolve() == output_path.resolve():
         raise ValueError("Input and output paths must be different.")
@@ -179,6 +338,8 @@ def transform(input_path: str | Path, output_path: str | Path) -> None:
 
     ws = wb[SHEET_NAME]
     validate_structure(ws)
+    replacement_date = read_replacement_date(date_source_path)
+    replace_dated_headers(ws, replacement_date)
 
     max_row = ws.max_row
     max_col = ws.max_column
@@ -235,9 +396,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("input_path", nargs="?", default="samples/input.xlsx")
     parser.add_argument("output_path", nargs="?", default="samples/actual_output.xlsx")
+    parser.add_argument(
+        "--date-source",
+        default=None,
+        help=f"Workbook containing the replacement date in {SHEET_NAME}!{DATE_SOURCE_CELL}",
+    )
     args = parser.parse_args()
 
-    transform(args.input_path, args.output_path)
+    transform(args.input_path, args.output_path, args.date_source)
 
 
 if __name__ == "__main__":
