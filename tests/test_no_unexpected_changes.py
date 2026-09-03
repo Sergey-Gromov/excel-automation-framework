@@ -38,11 +38,13 @@ def test_no_unexpected_changes_from_input(paths):
     input_ws = input_wb[transform.SHEET_NAME]
     actual_ws = actual_wb[transform.SHEET_NAME]
 
-    assert actual_ws.max_row == transform.EXPECTED_MAX_ROW
+    assert actual_ws.max_row == input_ws.max_row
     assert actual_ws.max_column == transform.EXPECTED_MAX_COL
 
+    last_data_row = transform.data_row(input_ws)
     date_cols = set(transform.DATE_COLUMNS.values())
-    new_formula_coords = set(transform.NEW_FORMULAS)
+    new_formula_map = transform.new_formulas(last_data_row)
+    new_formula_coords = set(new_formula_map)
     dated_final_columns = {
         transform.final_for_source_column(col): prefix
         for col, prefix in transform.DATED_HEADER_RULES
@@ -50,14 +52,14 @@ def test_no_unexpected_changes_from_input(paths):
     replacement_date = transform.read_replacement_date(ROOT / "sh513.xlsx")
     style_attrs = ("font", "fill", "border", "alignment", "protection")
 
-    for row in range(1, transform.EXPECTED_MAX_ROW + 1):
+    for row in range(1, last_data_row + 1):
         for final_col in range(1, transform.EXPECTED_MAX_COL + 1):
             source_col = transform.source_for_final_column(final_col)
             source_cell = input_ws.cell(row, source_col)
             actual_cell = actual_ws.cell(row, final_col)
 
-            if actual_cell.coordinate in transform.NEW_FORMULAS:
-                expected_value = transform.NEW_FORMULAS[actual_cell.coordinate]
+            if actual_cell.coordinate in new_formula_map:
+                expected_value = new_formula_map[actual_cell.coordinate]
             elif row == transform.HEADER_ROW and final_col in dated_final_columns:
                 expected_value = transform.replace_date_in_header(
                     source_cell.value,
@@ -97,7 +99,7 @@ def test_no_unexpected_changes_from_input(paths):
                 f"Comment presence mismatch at {actual_cell.coordinate}"
             )
 
-    for row in range(1, transform.EXPECTED_MAX_ROW + 1):
+    for row in range(1, last_data_row + 1):
         assert actual_ws.row_dimensions[row].height == input_ws.row_dimensions[row].height, (
             f"Row height mismatch at row {row}"
         )

@@ -159,6 +159,12 @@ rejected or failed.
 Options: `--sample PATH`, `--report-dir DIR`, `--needs-review-dir DIR`, and
 `--overwrite`.
 
+The default validation sample is `samples/input_structural.xlsx` (the
+production sample truncated to 100 rows), so the plain command is correct and
+fast for the 6969-row production workbooks. The row count no longer needs to
+match — only the structure and formats. Pass `--sample samples/input_big.xlsx`
+only if you need every data row checked against the full production sample.
+
 ---
 
 ## Normal workflow

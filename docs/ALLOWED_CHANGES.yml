@@ -1,31 +1,33 @@
 # Intentional changes for the Ликвидность transformation.
 #
-# The moved/shifted block is final columns BW:FG (75:163), rows 1:100.
+# The moved/shifted block is final columns BW:FG (75:163), rows 1:last_data_row.
 # Source columns FF:FG (162:163) move to BW:BX (75:76).
 # Source columns BW:FE (75:161) shift right to BY:FG (77:163).
+# Row-dependent ranges use the Excel maximum row so the whitelist remains valid
+# for workbooks with more than the 100-row sample.
 
 allowed_ranges:
   - sheet: Ликвидность
-    range: BW1:FG100
+    range: BW1:FG1048576
     reason: Move FF/FG to BW/BX and shift BW:FE right by two columns
   - sheet: Ликвидность
-    range: I10:I100
+    range: I10:I1048576
     reason: Display Дата заключения as dd.mm.yyyy while keeping native date values
   - sheet: Ликвидность
-    range: J10:J100
+    range: J10:J1048576
     reason: Display Дата расторжения договора as dd.mm.yyyy while keeping native date values
   - sheet: Ликвидность
-    range: S10:S100
+    range: S10:S1048576
     reason: Display ДЗ начальная дата образования as dd.mm.yyyy while keeping native date values
   - sheet: Ликвидность
-    range: T10:T100
+    range: T10:T1048576
     reason: Display first ДЗ конечная дата образования as dd.mm.yyyy while keeping native date values
   - sheet: Ликвидность
     range: BB7:BB7
-    reason: Add SUBTOTAL(109, BB10:BB101) row-7 total
+    reason: Add dynamic SUBTOTAL(109, BB10:BB{last_data_row + 1}) row-7 total
   - sheet: Ликвидность
     range: CV7:CV7
-    reason: Add SUBTOTAL(109, CV10:CV101) row-7 total
+    reason: Add dynamic SUBTOTAL(109, CV10:CV{last_data_row + 1}) row-7 total
   - sheet: Ликвидность
     range: CU9:CU9
     reason: Replace the date in the БУ ДЗ всего на header with sh513.xlsx!B1

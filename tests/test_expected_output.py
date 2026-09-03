@@ -12,6 +12,11 @@ def test_actual_applies_intended_changes(paths):
 
     assert actual_ws.max_column == transform.EXPECTED_MAX_COL
 
+    last_data_row = transform.data_row(input_ws)
+
+    def subtotal(col: str) -> str:
+        return f"=SUBTOTAL(109,{col}10:{col}{last_data_row + 1})"
+
     assert actual_ws["BW9"].value == input_ws["FF9"].value
     assert actual_ws["BW9"].value.strip() == "Сумма годовой корректировки"
     assert actual_ws["BX9"].value == input_ws["FG9"].value
@@ -20,18 +25,18 @@ def test_actual_applies_intended_changes(paths):
     assert actual_ws["BY9"].value.strip() == "Оплачено нарастающим итогом с начала периода"
     assert actual_ws["FG9"].value == input_ws["FE9"].value
 
-    assert actual_ws["BV7"].value == "=SUBTOTAL(109,BV10:BV101)"
-    assert actual_ws["BW7"].value == "=SUBTOTAL(109,BW10:BW101)"
-    assert actual_ws["BX7"].value == "=SUBTOTAL(109,BX10:BX101)"
-    assert actual_ws["BY7"].value == "=SUBTOTAL(109,BY10:BY101)"
-    assert actual_ws["FG7"].value == "=SUBTOTAL(109,FG10:FG101)"
-    assert actual_ws["BB7"].value == "=SUBTOTAL(109,BB10:BB101)"
-    assert actual_ws["CV7"].value == "=SUBTOTAL(109,CV10:CV101)"
+    assert actual_ws["BV7"].value == subtotal("BV")
+    assert actual_ws["BW7"].value == subtotal("BW")
+    assert actual_ws["BX7"].value == subtotal("BX")
+    assert actual_ws["BY7"].value == subtotal("BY")
+    assert actual_ws["FG7"].value == subtotal("FG")
+    assert actual_ws["BB7"].value == subtotal("BB")
+    assert actual_ws["CV7"].value == subtotal("CV")
     assert actual_ws["BB7"].number_format == transform.TOTAL_NUMBER_FORMAT
     assert actual_ws["CV7"].number_format == transform.TOTAL_NUMBER_FORMAT
 
     for col in ("I", "J", "S", "T"):
-        for row in range(10, transform.EXPECTED_MAX_ROW + 1):
+        for row in range(10, last_data_row + 1):
             coord = f"{col}{row}"
             assert actual_ws[coord].number_format == transform.DATE_NUMBER_FORMAT
             assert actual_ws[coord].value == input_ws[coord].value

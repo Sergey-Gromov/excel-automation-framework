@@ -12,12 +12,12 @@ from openpyxl import load_workbook
 
 from transform import (
     SHEET_NAME,
-    prepare_validation_input,
+    prepare_validation_pair,
     transform,
     validate_structure,
 )
 
-DEFAULT_SAMPLE = "samples/input.xlsx"
+DEFAULT_SAMPLE = "samples/input_structural.xlsx"
 DEFAULT_OUTPUT = "samples/actual_output.xlsx"
 DEFAULT_REPORT_DIR = "reports"
 DEFAULT_NEEDS_REVIEW_DIR = "needs_review"
@@ -37,9 +37,11 @@ def run(
     quarantine it for human review instead of running the transformation —
     a silent structural mismatch is worse than a loud refusal.
 
-    Before comparison, only the three dated row-9 headers are normalized to
-    the sample dates so ordinary monthly date changes do not trigger
-    quarantine. All other structural drift is still rejected.
+    Before comparison, the input and the sample are normalized so that
+    ordinary variation does not trigger quarantine: the three dated row-9
+    headers are rewritten to the sample dates, and both sides are reduced to
+    the smaller data volume (row-7 SUBTOTAL ranges rewritten, extra data rows
+    dropped). All other structural drift is still rejected.
 
     Returns 0 if the transformation ran, 1 if the file was quarantined.
     """
@@ -52,12 +54,16 @@ def run(
     structural_error = None
     try:
         with tempfile.TemporaryDirectory(prefix="production_validation_") as tmp_dir:
-            validation_input_path = prepare_validation_input(
+            validation_input_path, validation_sample_path = prepare_validation_pair(
                 input_path,
                 sample_path,
                 Path(tmp_dir),
             )
-            diff_count = validate(sample_path, validation_input_path, report_dir=report_dir)
+            diff_count = validate(
+                validation_sample_path,
+                validation_input_path,
+                report_dir=report_dir,
+            )
     except ValueError as exc:
         structural_error = str(exc)
 

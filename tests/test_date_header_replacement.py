@@ -78,11 +78,12 @@ def test_normal_rows_are_preserved(transformed_output):
 
 def test_formula_placement_is_preserved(transformed_output):
     ws = _load_sheet(transformed_output)
+    last_data_row = transform.data_row(_load_sheet(SAMPLE_INPUT))
 
-    assert ws["CU7"].value == "=SUBTOTAL(109,CU10:CU101)"
-    assert ws["BY7"].value == "=SUBTOTAL(109,BY10:BY101)"
-    assert ws["BB7"].value == transform.NEW_FORMULAS["BB7"]
-    assert ws["CV7"].value == transform.NEW_FORMULAS["CV7"]
+    assert ws["CU7"].value == transform.new_subtotal_formula("CU", last_data_row)
+    assert ws["BY7"].value == transform.new_subtotal_formula("BY", last_data_row)
+    assert ws["BB7"].value == transform.new_subtotal_formula("BB", last_data_row)
+    assert ws["CV7"].value == transform.new_subtotal_formula("CV", last_data_row)
     assert ws["AE9"].value == '="Июль 2023"'
 
 

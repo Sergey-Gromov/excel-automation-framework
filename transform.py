@@ -13,7 +13,7 @@ from openpyxl.utils.cell import range_boundaries
 
 SHEET_NAME = "Ликвидность"
 HEADER_ROW = 9
-EXPECTED_MAX_ROW = 100
+MIN_DATA_ROW = 10
 EXPECTED_MAX_COL = 183
 
 DEFAULT_DATE_SOURCE = Path(__file__).resolve().parent / "sh513.xlsx"
@@ -45,10 +45,15 @@ MOVED_HEADERS = (
     ("Перерасчет суммы годовой корректировки", 163),
 )
 
-NEW_FORMULAS = {
-    "BB7": "=SUBTOTAL(109,BB10:BB101)",
-    "CV7": "=SUBTOTAL(109,CV10:CV101)",
-}
+NEW_FORMULA_COLUMNS = ("BB", "CV")
+
+
+def new_subtotal_formula(col_letter: str, max_row: int) -> str:
+    return f"=SUBTOTAL(109,{col_letter}10:{col_letter}{max_row + 1})"
+
+
+def new_formulas(max_row: int) -> dict[str, str]:
+    return {f"{col}7": new_subtotal_formula(col, max_row) for col in NEW_FORMULA_COLUMNS}
 
 DATE_NUMBER_FORMAT = "dd.mm.yyyy"
 TOTAL_NUMBER_FORMAT = "#,##0.00"
@@ -85,6 +90,25 @@ _COLUMN_MAP = {
 
 _STRING_PART_RE = re.compile(r'("(?:[^"]|"")*")')
 _CELL_REF_RE = re.compile(r"(\$?[A-Z]{1,3})(\$?\d+)")
+_ROW7_SUBTOTAL_RE = re.compile(
+    r"SUBTOTAL\(\d+,\$?[A-Z]{1,3}10:\$?[A-Z]{1,3}(\d+)\)"
+)
+_ROW7_SUBTOTAL_FULL_RE = re.compile(
+    r"=SUBTOTAL\((\d+),\$?([A-Z]{1,3})10:\$?([A-Z]{1,3})(\d+)\)"
+)
+
+
+def data_row(ws) -> int:
+    ends = []
+    for col in range(1, ws.max_column + 1):
+        value = ws.cell(7, col).value
+        if isinstance(value, str) and value.startswith("="):
+            match = _ROW7_SUBTOTAL_RE.search(value)
+            if match:
+                ends.append(int(match.group(1)))
+    if not ends:
+        return ws.max_row
+    return max(ends) - 1
 
 
 def translate_formula(formula: str) -> str:
@@ -216,11 +240,51 @@ def _sample_dated_header_dates(ws) -> dict[str, str]:
     return dates
 
 
-def prepare_validation_input(
+def _rewrite_row7_subtotal_end(ws, target_end_row: int) -> bool:
+    changed = False
+    for col in range(1, ws.max_column + 1):
+        cell = ws.cell(7, col)
+        value = cell.value
+        if isinstance(value, str) and value.startswith("="):
+            match = _ROW7_SUBTOTAL_FULL_RE.match(value)
+            if match is not None and int(match.group(4)) != target_end_row:
+                cell.value = (
+                    f"=SUBTOTAL({match.group(1)},{match.group(2)}10:"
+                    f"{match.group(3)}{target_end_row})"
+                )
+                changed = True
+    return changed
+
+
+def _truncate_to_last_row(ws, target_last_row: int) -> bool:
+    if ws.max_row > target_last_row:
+        ws.delete_rows(target_last_row + 1, ws.max_row - target_last_row)
+        return True
+    return False
+
+
+def prepare_validation_pair(
     input_path: str | Path,
     sample_path: str | Path,
     temp_dir: str | Path,
-) -> Path:
+) -> tuple[Path, Path]:
+    """
+    Prepare the input and the sample for a volume-agnostic structural
+    comparison.
+
+    The comparator scans up to the larger file's dimensions, so two files
+    with identical structure but different data volumes would otherwise
+    differ in the row-7 SUBTOTAL formula ranges and in the number formats of
+    the extra data rows. To compare structure only, both sides are normalized
+    to the smaller data volume:
+
+    - the input's dated row-9 headers are rewritten to the sample's dates;
+    - both files' row-7 SUBTOTAL formulas are rewritten to the common range;
+    - the larger file is truncated to the smaller file's last data row.
+
+    Returns (normalized_input_path, normalized_sample_path). A side that needs
+    no change is returned as its original path.
+    """
     input_path = Path(input_path)
     sample_path = Path(sample_path)
     temp_dir = Path(temp_dir)
@@ -228,36 +292,56 @@ def prepare_validation_input(
     sample_wb = load_workbook(sample_path, data_only=False)
     if SHEET_NAME not in sample_wb.sheetnames:
         raise ValueError(f"Лист '{SHEET_NAME}' не найден в образце '{sample_path}'.")
-    sample_dates = _sample_dated_header_dates(sample_wb[SHEET_NAME])
+    sample_ws = sample_wb[SHEET_NAME]
+    sample_dates = _sample_dated_header_dates(sample_ws)
+    sample_last = data_row(sample_ws)
 
-    wb = load_workbook(input_path, data_only=False)
-    if SHEET_NAME not in wb.sheetnames:
+    input_wb = load_workbook(input_path, data_only=False)
+    if SHEET_NAME not in input_wb.sheetnames:
         raise ValueError(f"Лист '{SHEET_NAME}' не найден во входной книге '{input_path}'.")
-    ws = wb[SHEET_NAME]
+    input_ws = input_wb[SHEET_NAME]
+    input_last = data_row(input_ws)
 
-    changed = False
+    target_last = min(input_last, sample_last)
+    target_end = target_last + 1
+
+    input_changed = False
     for col, prefix in DATED_HEADER_RULES:
-        cell = ws.cell(HEADER_ROW, col)
+        cell = input_ws.cell(HEADER_ROW, col)
         value = cell.value
         match = _match_dated_header(value, prefix)
         if match is not None and match.group(2) != sample_dates[prefix]:
             cell.value = replace_date_in_header(value, prefix, sample_dates[prefix])
-            changed = True
+            input_changed = True
+    input_changed |= _truncate_to_last_row(input_ws, target_last)
+    input_changed |= _rewrite_row7_subtotal_end(input_ws, target_end)
 
-    if not changed:
-        return input_path
+    sample_changed = _truncate_to_last_row(sample_ws, target_last)
+    sample_changed |= _rewrite_row7_subtotal_end(sample_ws, target_end)
 
-    normalized_path = temp_dir / input_path.name
-    normalized_path.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(normalized_path)
-    return normalized_path
+    if input_changed:
+        input_out = temp_dir / f".norm_{input_path.name}"
+        input_out.parent.mkdir(parents=True, exist_ok=True)
+        input_wb.save(input_out)
+    else:
+        input_out = input_path
+
+    if sample_changed:
+        sample_out = temp_dir / f".norm_{sample_path.name}"
+        sample_out.parent.mkdir(parents=True, exist_ok=True)
+        sample_wb.save(sample_out)
+    else:
+        sample_out = sample_path
+
+    return input_out, sample_out
 
 
 def validate_structure(ws) -> None:
-    if ws.max_row != EXPECTED_MAX_ROW:
+    last_data_row = data_row(ws)
+    if last_data_row < MIN_DATA_ROW:
         raise ValueError(
-            f"Ожидалось {EXPECTED_MAX_ROW} строк в листе '{SHEET_NAME}', "
-            f"фактически {ws.max_row}."
+            f"Ожидалось не менее {MIN_DATA_ROW} строк в листе '{SHEET_NAME}', "
+            f"фактически {last_data_row}."
         )
     if ws.max_column != EXPECTED_MAX_COL:
         raise ValueError(
@@ -341,11 +425,11 @@ def transform(
     replacement_date = read_replacement_date(date_source_path)
     replace_dated_headers(ws, replacement_date)
 
-    max_row = ws.max_row
+    last_data_row = data_row(ws)
     max_col = ws.max_column
 
     cell_snapshot = {}
-    for row in range(1, max_row + 1):
+    for row in range(1, last_data_row + 1):
         for col in range(1, max_col + 1):
             cell = ws.cell(row, col)
             cell_snapshot[(row, col)] = (
@@ -363,7 +447,7 @@ def transform(
     for final_col in range(1, max_col + 1):
         source_col = source_for_final_column(final_col)
 
-        for row in range(1, max_row + 1):
+        for row in range(1, last_data_row + 1):
             value, style, hyperlink, comment = cell_snapshot[(row, source_col)]
             if isinstance(value, str) and value.startswith("="):
                 value = translate_formula(value)
@@ -380,10 +464,10 @@ def transform(
     _remap_merged_ranges(ws, merged_ranges)
 
     for col in DATE_COLUMNS.values():
-        for row in range(10, max_row + 1):
+        for row in range(10, last_data_row + 1):
             ws.cell(row, col).number_format = DATE_NUMBER_FORMAT
 
-    for coord, formula in NEW_FORMULAS.items():
+    for coord, formula in new_formulas(last_data_row).items():
         cell = ws[coord]
         cell.value = formula
         cell.number_format = TOTAL_NUMBER_FORMAT

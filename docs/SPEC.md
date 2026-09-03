@@ -15,12 +15,20 @@ date from `sh513.xlsx!B1`. All unrelated workbook content must be preserved.
 - Input file: `samples/input.xlsx`
 - Reference result: `samples/expected_output.xlsx`
 - Actual generated result: `samples/actual_output.xlsx`
+- Production sample: `samples/input_big.xlsx`
+- Default validation sample: `samples/input_structural.xlsx` (the production
+  sample truncated to 100 rows; same structure/formats, fewer rows, so the
+  validation gate is fast). Regenerate with `python samples/make_structural_sample.py`.
+- Production reference result: `samples/expected_output_big.xlsx`
 - Date source: `sh513.xlsx`
 - Date source cell: `Ликвидность!B1`
 - Replacement date format: `DD.MM.YYYY`
 - Sheet: `Ликвидность`
 - Header row: `9`
-- Expected dimensions: `100` rows and `183` columns (`GA`)
+- Expected dimensions: at least `10` data rows and `183` columns (`GA`)
+- Data rows: `10:last_data_row`, where `last_data_row` is one less than the
+  largest row referenced by the row-7 `SUBTOTAL` formulas. The small sample has
+  `last_data_row = 100`; the production sample has `last_data_row = 6969`.
 
 The reference result contains known accidental differences and is therefore not
 used as a full-cell equality target. See "Known accidental reference differences".
@@ -100,8 +108,9 @@ columns present in the accidental reference workbook.
 - Formula references are remapped to the final positions of the referenced
   logical columns.
 - String constants inside formulas are not modified.
-- Existing row-7 `SUBTOTAL` formulas keep the `10:101` row range and are updated
-  to their final column letters.
+- Existing row-7 `SUBTOTAL` formulas keep the `10:{last_data_row + 1}` row
+  range and are updated to their final column letters. For the 100-row sample
+  this range is `10:101`.
 - Row-9 month formulas such as `="Июль 2023"` are moved unchanged as formula
   strings.
 
@@ -122,10 +131,12 @@ Examples:
 
 | Cell | Formula | Number format |
 |---|---|---|
-| `BB7` | `=SUBTOTAL(109,BB10:BB101)` | `#,##0.00` |
-| `CV7` | `=SUBTOTAL(109,CV10:CV101)` | `#,##0.00` |
+| `BB7` | `=SUBTOTAL(109,BB10:BB{last_data_row + 1})` | `#,##0.00` |
+| `CV7` | `=SUBTOTAL(109,CV10:CV{last_data_row + 1})` | `#,##0.00` |
 
-These are final workbook positions, not source header names.
+For the 100-row sample these formulas are `=SUBTOTAL(109,BB10:BB101)` and
+`=SUBTOTAL(109,CV10:CV101)`. These are final workbook positions, not source
+header names.
 
 ### Change 4: Normalize date display formats
 
@@ -133,7 +144,7 @@ These are final workbook positions, not source header names.
 
 **Columns:** `I`, `J`, `S`, and first `T`
 
-**Rows:** `10:100`
+**Rows:** `10:{last_data_row}`
 
 **Behavior:**
 
@@ -218,11 +229,12 @@ docs/ALLOWED_CHANGES.yml
 
 Allowed ranges:
 
-- `Ликвидность!BW1:FG100` for the moved/shifted column block
-- `Ликвидность!I10:I100` for date display format
-- `Ликвидность!J10:J100` for date display format
-- `Ликвидность!S10:S100` for date display format
-- `Ликвидность!T10:T100` for date display format
+- `Ликвидность!BW1:FG1048576` for the moved/shifted column block across
+  supported row counts
+- `Ликвидность!I10:I1048576` for date display format
+- `Ликвидность!J10:J1048576` for date display format
+- `Ликвидность!S10:S1048576` for date display format
+- `Ликвидность!T10:T1048576` for date display format
 - `Ликвидность!BB7:BB7` for the new row-7 formula
 - `Ликвидность!CV7:CV7` for the new row-7 formula
 - `Ликвидность!CU9:CU9` for the replaced `БУ ДЗ всего на` header date
@@ -279,10 +291,20 @@ Routine production command:
 python run_production.py path/to/incoming.xlsx path/to/output.xlsx
 ```
 
-Before validation, `run_production.py` normalizes only the three dated row-9
-headers to the sample dates. This allows ordinary monthly date changes to pass
-the gate while still detecting structural drift. The transformation itself
-uses `sh513.xlsx!B1` as the replacement date.
+The default sample is `samples/input_structural.xlsx` — the production sample
+truncated to 100 rows. It has the same structure and formats as the 6969-row
+production workbooks, so the plain command is both correct and fast for them.
+Pass `--sample samples/input_big.xlsx` only if you need every data row checked
+against the full production sample (slower).
+
+Before validation, `run_production.py` normalizes the input and the sample so
+that ordinary variation does not trigger quarantine: the three dated row-9
+headers are rewritten to the sample dates, and both sides are reduced to the
+smaller data volume (row-7 `SUBTOTAL` ranges rewritten, extra data rows
+dropped). This lets files of different sizes pass the gate while still
+detecting structural drift. The sample's size therefore no longer needs to
+match the incoming file, but its structure and formats should. The
+transformation itself uses `sh513.xlsx!B1` as the replacement date.
 
 Exit code `0` means the incoming file matched the sample structure and the
 transformation ran. Exit code `1` means structural drift was detected and the
@@ -295,6 +317,11 @@ Routine batch command:
 ```bash
 python run_batch.py path/to/input_dir path/to/output_dir
 ```
+
+The default sample is `samples/input_structural.xlsx`, so the plain command is
+correct and fast for the 6969-row production workbooks. Pass
+`--sample samples/input_big.xlsx` only if you need every data row checked
+against the full production sample (slower).
 
 Batch mode must:
 
