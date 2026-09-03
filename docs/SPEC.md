@@ -344,3 +344,57 @@ Batch mode must:
 Batch exit code `0` means every discovered workbook transformed successfully,
 or no eligible workbook was found. Batch exit code `1` means at least one
 workbook was rejected or failed.
+
+---
+
+## Observability (timing, progress, logging)
+
+The transformation is deterministic and produces the same workbook regardless of
+these options. Observability only adds side-channel output; it never changes the
+transformed cells, formulas, formats, or styles.
+
+### Elapsed time
+
+`transform.py` prints the total wall-clock execution time on the last line of
+stdout, in whole minutes and seconds, e.g.:
+
+```text
+Elapsed time: 1m 05s
+```
+
+The value is measured around the `transform()` call in `main()`, so it covers
+loading, validation, the column move, and saving.
+
+### Progress bar
+
+The two dominant loops (the cell snapshot and the column move) update a
+single-line percentage progress bar on stderr, e.g.:
+
+```text
+[######################----]  80.0% (14688/18300)
+```
+
+The bar is enabled by default when stderr is a terminal (interactive runs) and
+disabled when stderr is redirected (scripts, CI, tests). It can be forced on or
+off with `--progress` / `--no-progress` on `transform.py`, `run_production.py`,
+and `run_batch.py`.
+
+### Logging
+
+`transform.py`, `run_production.py`, and `run_batch.py` emit structured log
+records to stderr at `INFO` level for the major steps (load, validate, read
+date, replace headers, snapshot, move columns, apply formats, add formulas,
+save). `--verbose` raises the level to `DEBUG`. Logging is configured by
+`transform.setup_logging()` and is idempotent, so a test harness that already
+configured logging is left untouched.
+
+### Flags
+
+All three entry points accept:
+
+- `--progress` — force the progress bar on
+- `--no-progress` — disable the progress bar
+- `--verbose` — enable debug logging
+
+Direct calls to `transform()` (as the tests do) default to `progress=False` and
+do not configure logging, so test output stays clean.

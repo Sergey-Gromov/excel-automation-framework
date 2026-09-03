@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -12,6 +13,9 @@ from run_production import (
     DEFAULT_SAMPLE,
     run,
 )
+from transform import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 def discover_workbooks(input_dir: str | Path) -> list[Path]:
@@ -43,6 +47,7 @@ def run_batch(
     report_dir: str | Path = DEFAULT_REPORT_DIR,
     needs_review_dir: str | Path = DEFAULT_NEEDS_REVIEW_DIR,
     overwrite: bool = False,
+    progress: bool = False,
 ) -> int:
     input_resolved = Path(input_dir).resolve()
     output_resolved = Path(output_dir).resolve()
@@ -63,6 +68,8 @@ def run_batch(
         print(f"No eligible .xlsx workbooks found in '{input_resolved}'.")
         return 0
 
+    logger.info("Discovered %d workbook(s) in '%s'", len(files), input_resolved)
+
     try:
         output_resolved.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -76,8 +83,9 @@ def run_batch(
     rejected: list[Path] = []
     failed: list[tuple[Path, str]] = []
 
-    for file in files:
+    for index, file in enumerate(files, start=1):
         output_path = output_resolved / file.name
+        logger.info("Processing %s (%d/%d)", file.name, index, len(files))
 
         if output_path.exists() or output_path.is_symlink():
             if output_path.is_dir():
@@ -108,6 +116,7 @@ def run_batch(
                 sample_path=sample_path,
                 report_dir=file_report_dir,
                 needs_review_dir=file_needs_review_dir,
+                progress=progress,
             )
             if exit_code == 0:
                 os.replace(temp_path, output_path)
@@ -157,7 +166,31 @@ def main() -> None:
         action="store_true",
         help="Replace existing output files using an atomic temporary-file replacement",
     )
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Force the progress bar on (default: on when stderr is a terminal)",
+    )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the progress bar",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable debug logging",
+    )
     args = parser.parse_args()
+
+    setup_logging(args.verbose)
+
+    if args.no_progress:
+        progress = False
+    elif args.progress:
+        progress = True
+    else:
+        progress = sys.stderr.isatty()
 
     sys.exit(
         run_batch(
@@ -167,6 +200,7 @@ def main() -> None:
             report_dir=args.report_dir,
             needs_review_dir=args.needs_review_dir,
             overwrite=args.overwrite,
+            progress=progress,
         )
     )
 

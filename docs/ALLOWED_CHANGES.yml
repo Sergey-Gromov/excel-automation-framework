@@ -5,6 +5,11 @@
 # Source columns BW:FE (75:161) shift right to BY:FG (77:163).
 # Row-dependent ranges use the Excel maximum row so the whitelist remains valid
 # for workbooks with more than the 100-row sample.
+#
+# Observability (elapsed-time print, progress bar, and logging added to
+# transform.py / run_production.py / run_batch.py) is side-channel output only.
+# It does not alter any cell, formula, format, or style, so it requires no new
+# allowed ranges here.
 
 allowed_ranges:
   - sheet: Ликвидность

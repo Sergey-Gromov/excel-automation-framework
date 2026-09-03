@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import re
+import sys
+import time
 from copy import copy
 from datetime import date, datetime
 from pathlib import Path
@@ -10,6 +13,8 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.cell import range_boundaries
 
+
+logger = logging.getLogger(__name__)
 
 SHEET_NAME = "Ликвидность"
 HEADER_ROW = 9
@@ -57,6 +62,49 @@ def new_formulas(max_row: int) -> dict[str, str]:
 
 DATE_NUMBER_FORMAT = "dd.mm.yyyy"
 TOTAL_NUMBER_FORMAT = "#,##0.00"
+
+
+def setup_logging(verbose: bool = False) -> None:
+    """Configure root logging for command-line runs.
+
+    Idempotent: if the root logger already has handlers (e.g. a test harness
+    configured logging), the existing configuration is left untouched.
+    """
+    root = logging.getLogger()
+    if root.handlers:
+        root.setLevel(logging.DEBUG if verbose else logging.INFO)
+        return
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
+    )
+    root.addHandler(handler)
+    root.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+
+def format_duration(seconds: float) -> str:
+    """Format a duration as whole minutes and seconds, e.g. ``1m 05s``."""
+    total_seconds = int(round(seconds))
+    minutes, secs = divmod(total_seconds, 60)
+    return f"{minutes}m {secs:02d}s"
+
+
+def _progress_bar(current: int, total: int, width: int = 30) -> None:
+    """Render a single-line percentage progress bar on stderr.
+
+    Uses a carriage return so the bar updates in place; a trailing newline is
+    emitted once the bar reaches 100%.
+    """
+    if total <= 0:
+        return
+    fraction = min(1.0, current / total)
+    filled = int(width * fraction)
+    bar = "#" * filled + "-" * (width - filled)
+    percent = fraction * 100
+    sys.stderr.write(f"\r[{bar}] {percent:5.1f}% ({current}/{total})")
+    if current >= total:
+        sys.stderr.write("\n")
+    sys.stderr.flush()
 
 
 def source_for_final_column(final_col: int) -> int:
@@ -406,6 +454,7 @@ def transform(
     input_path: str | Path,
     output_path: str | Path,
     date_source_path: str | Path | None = None,
+    progress: bool = False,
 ) -> None:
     input_path = Path(input_path)
     output_path = Path(output_path)
@@ -416,18 +465,31 @@ def transform(
     if input_path.resolve() == output_path.resolve():
         raise ValueError("Input and output paths must be different.")
 
+    start_time = time.perf_counter()
+    logger.info("Loading workbook from %s", input_path)
     wb = load_workbook(input_path)
     if SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"Лист '{SHEET_NAME}' не найден во входной книге.")
 
     ws = wb[SHEET_NAME]
+    logger.info("Validating structure of sheet '%s'", SHEET_NAME)
     validate_structure(ws)
+    logger.info("Reading replacement date from %s", date_source_path)
     replacement_date = read_replacement_date(date_source_path)
+    logger.info("Replacing dated row-%d headers with %s", HEADER_ROW, replacement_date)
     replace_dated_headers(ws, replacement_date)
 
     last_data_row = data_row(ws)
     max_col = ws.max_column
+    total_cells = last_data_row * max_col
+    update_step = max(1, total_cells // 100)
 
+    logger.info(
+        "Snapshotting %d cells (%d rows x %d columns)",
+        total_cells,
+        last_data_row,
+        max_col,
+    )
     cell_snapshot = {}
     for row in range(1, last_data_row + 1):
         for col in range(1, max_col + 1):
@@ -438,12 +500,17 @@ def transform(
                 copy(cell.hyperlink) if cell.hyperlink else None,
                 copy(cell.comment) if cell.comment else None,
             )
+            if progress:
+                done = (row - 1) * max_col + col
+                if done % update_step == 0 or done == total_cells:
+                    _progress_bar(done, total_cells)
 
     column_snapshot = _snapshot_column_dimensions(ws, max_col)
     merged_ranges = [str(rng) for rng in ws.merged_cells.ranges]
     for merged_range in merged_ranges:
         ws.unmerge_cells(merged_range)
 
+    logger.info("Moving and translating columns")
     for final_col in range(1, max_col + 1):
         source_col = source_for_final_column(final_col)
 
@@ -459,21 +526,34 @@ def transform(
             if hyperlink is not None:
                 hyperlink.ref = cell.coordinate
             cell.comment = comment
+            if progress:
+                done = (final_col - 1) * last_data_row + row
+                if done % update_step == 0 or done == total_cells:
+                    _progress_bar(done, total_cells)
 
     _apply_column_dimensions(ws, max_col, column_snapshot)
     _remap_merged_ranges(ws, merged_ranges)
 
+    logger.info("Applying date display formats to columns %s",
+                ", ".join(get_column_letter(c) for c in sorted(DATE_COLUMNS.values())))
     for col in DATE_COLUMNS.values():
         for row in range(10, last_data_row + 1):
             ws.cell(row, col).number_format = DATE_NUMBER_FORMAT
 
+    logger.info("Adding row-7 SUBTOTAL formulas in %s",
+                ", ".join(NEW_FORMULA_COLUMNS))
     for coord, formula in new_formulas(last_data_row).items():
         cell = ws[coord]
         cell.value = formula
         cell.number_format = TOTAL_NUMBER_FORMAT
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Saving workbook to %s", output_path)
     wb.save(output_path)
+    logger.info(
+        "Transformation completed in %s",
+        format_duration(time.perf_counter() - start_time),
+    )
 
 
 def main() -> None:
@@ -485,9 +565,36 @@ def main() -> None:
         default=None,
         help=f"Workbook containing the replacement date in {SHEET_NAME}!{DATE_SOURCE_CELL}",
     )
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Force the progress bar on (default: on when stderr is a terminal)",
+    )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the progress bar",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable debug logging",
+    )
     args = parser.parse_args()
 
-    transform(args.input_path, args.output_path, args.date_source)
+    setup_logging(args.verbose)
+
+    if args.no_progress:
+        progress = False
+    elif args.progress:
+        progress = True
+    else:
+        progress = sys.stderr.isatty()
+
+    start_time = time.perf_counter()
+    transform(args.input_path, args.output_path, args.date_source, progress=progress)
+    elapsed = time.perf_counter() - start_time
+    print(f"Elapsed time: {format_duration(elapsed)}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import shutil
 import sys
 import tempfile
@@ -13,9 +14,12 @@ from openpyxl import load_workbook
 from transform import (
     SHEET_NAME,
     prepare_validation_pair,
+    setup_logging,
     transform,
     validate_structure,
 )
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SAMPLE = "samples/input_structural.xlsx"
 DEFAULT_OUTPUT = "samples/actual_output.xlsx"
@@ -29,6 +33,7 @@ def run(
     sample_path: str | Path = DEFAULT_SAMPLE,
     report_dir: str | Path = DEFAULT_REPORT_DIR,
     needs_review_dir: str | Path = DEFAULT_NEEDS_REVIEW_DIR,
+    progress: bool = False,
 ) -> int:
     """
     Gate a production transformation run behind a structural check against
@@ -50,6 +55,7 @@ def run(
     report_dir = Path(report_dir)
     needs_review_dir = Path(needs_review_dir)
 
+    logger.info("Validating '%s' against sample '%s'", input_path, sample_path)
     diff_count = 0
     structural_error = None
     try:
@@ -105,7 +111,8 @@ def run(
         return 1
 
     output_path = Path(output_path)
-    transform(input_path, output_path)
+    logger.info("Validation passed; transforming '%s' -> '%s'", input_path, output_path)
+    transform(input_path, output_path, progress=progress)
     print(f"OK: '{input_path}' matches the expected structure, transformed to '{output_path}'.")
     return 0
 
@@ -123,7 +130,31 @@ def main() -> None:
     parser.add_argument("--sample", default=DEFAULT_SAMPLE, help="Known-good reference file")
     parser.add_argument("--report-dir", default=DEFAULT_REPORT_DIR)
     parser.add_argument("--needs-review-dir", default=DEFAULT_NEEDS_REVIEW_DIR)
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Force the progress bar on (default: on when stderr is a terminal)",
+    )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the progress bar",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable debug logging",
+    )
     args = parser.parse_args()
+
+    setup_logging(args.verbose)
+
+    if args.no_progress:
+        progress = False
+    elif args.progress:
+        progress = True
+    else:
+        progress = sys.stderr.isatty()
 
     sys.exit(
         run(
@@ -132,6 +163,7 @@ def main() -> None:
             sample_path=args.sample,
             report_dir=args.report_dir,
             needs_review_dir=args.needs_review_dir,
+            progress=progress,
         )
     )
 
