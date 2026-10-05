@@ -68,6 +68,7 @@ tar \
   --exclude='reports' \
   --exclude='needs_review' \
   --exclude='transformed' \
+  --exclude='output' \
   --exclude='incoming' \
   --exclude='__pycache__' \
   --exclude='*.pyc' \
@@ -140,31 +141,29 @@ python3 --version
 The project requires:
 
 ```text
-Python 3.10 or newer
+Python 3.8 or newer
 ```
 
-Recommended:
+The current production virtual environment runs on Python 3.8.20, and the
+full test suite passes on it. Newer versions (3.9+) also work.
 
-```text
-Python 3.11
-```
-
-If the system Python is older than 3.10, try installing Python 3.11:
+If the system Python is older than 3.8 (for example 3.6), try installing
+Python 3.8:
 
 ```bash
-sudo dnf install -y python3.11 python3.11-pip python3.11-venv
+sudo dnf install -y python38 python38-pip python38-venv
 ```
 
 If that package is not available, try:
 
 ```bash
-sudo dnf module install -y python311
+sudo dnf module install -y python38
 ```
 
 Then check:
 
 ```bash
-python3.11 --version
+python3.8 --version
 ```
 
 ---
@@ -217,16 +216,16 @@ separately from the original computer. (Regenerate the structural sample from
 
 # 6. Create a fresh virtual environment
 
-If your default `python3` is already Python 3.10 or newer:
+If your default `python3` is already Python 3.8 or newer:
 
 ```bash
 python3 -m venv .venv
 ```
 
-If you installed Python 3.11 separately:
+If you installed Python 3.8 separately:
 
 ```bash
-/usr/bin/python3.11 -m venv .venv
+/usr/bin/python3.8 -m venv .venv
 ```
 
 Activate the virtual environment:
@@ -274,8 +273,7 @@ cd ~/excel-513/513-finish
 run:
 
 ```bash
-pip install "openpyxl>=3.1.0" "pytest>=8.0"
-pip install -e ../excel-framework-core
+pip install --ignore-requires-python -r requirements.txt
 ```
 
 This is the option that matches the required folder layout:
@@ -286,13 +284,29 @@ This is the option that matches the required folder layout:
 └── excel-framework-core/
 ```
 
-Do not use `pip install -r requirements.txt` for this option if the RED OS computer cannot access the private GitHub repository, because `requirements.txt` points to GitHub.
+`requirements.txt` installs the core package editable from the sibling folder
+(`-e ../excel-framework-core`) and pins every dependency to a version that
+works on Python 3.8.
+
+The `--ignore-requires-python` flag is required because `excel-framework-core`
+declares `requires-python >=3.10` in its metadata, although its code is
+3.8-compatible (verified by the full test suite on Python 3.8). The flag only
+skips that metadata check; the explicit version pins in `requirements.txt`
+keep all other packages 3.8-compatible.
+
+Equivalent manual commands (same result):
+
+```bash
+pip install "openpyxl==3.1.5" "pytest==8.3.5" "iniconfig==2.1.0" "packaging==26.2" "pluggy==1.5.0" "typing-extensions==4.13.2"
+pip install -e ../excel-framework-core --ignore-requires-python
+```
 
 ---
 
 ## Option B: Install `excel-framework-core` from GitHub
 
-Use this option if the RED OS computer can access the GitHub repository.
+Use this option if the RED OS computer can access the GitHub repository and
+you did not copy the local `excel-framework-core` folder.
 
 First test access:
 
@@ -303,16 +317,20 @@ git ls-remote https://github.com/Sergey-Gromov/excel-framework-core.git
 If access works, install dependencies with:
 
 ```bash
-pip install -r requirements.txt
+pip install "openpyxl==3.1.5" "pytest==8.3.5" "iniconfig==2.1.0" "packaging==26.2" "pluggy==1.5.0" "typing-extensions==4.13.2"
+pip install --ignore-requires-python "git+https://github.com/Sergey-Gromov/excel-framework-core.git@b1e71c292078d87d33aeb656012378a77e216e72"
 ```
+
+Note: `pip install -r requirements.txt` does not work for this option, because
+`requirements.txt` installs the core package from the local sibling folder.
 
 If the repository is private, use a GitHub token:
 
 ```bash
 export GITHUB_TOKEN='PASTE_TOKEN_HERE'
 
-pip install "git+https://x-access-token:${GITHUB_TOKEN}@github.com/Sergey-Gromov/excel-framework-core.git@v0.1.0"
-pip install "openpyxl>=3.1.0" "pytest>=8.0"
+pip install "openpyxl==3.1.5" "pytest==8.3.5" "iniconfig==2.1.0" "packaging==26.2" "pluggy==1.5.0" "typing-extensions==4.13.2"
+pip install --ignore-requires-python "git+https://x-access-token:${GITHUB_TOKEN}@github.com/Sergey-Gromov/excel-framework-core.git@b1e71c292078d87d33aeb656012378a77e216e72"
 
 unset GITHUB_TOKEN
 ```
@@ -344,7 +362,7 @@ pytest -q
 Expected result:
 
 ```text
-32 passed
+39 passed
 ```
 
 ---
@@ -534,37 +552,40 @@ Then reinstall the core package.
 For local installation:
 
 ```bash
-pip install -e ../excel-framework-core
+pip install -e ../excel-framework-core --ignore-requires-python
 ```
 
 For GitHub installation:
 
 ```bash
-pip install -r requirements.txt
+pip install --ignore-requires-python "git+https://github.com/Sergey-Gromov/excel-framework-core.git@b1e71c292078d87d33aeb656012378a77e216e72"
 ```
 
 ---
 
-## `pip install -r requirements.txt` fails with GitHub 404
+## `pip install -r requirements.txt` fails
 
-The `excel-framework-core` repository is private.
+`requirements.txt` installs the core package from the local sibling folder
+(`-e ../excel-framework-core`). If the error mentions that path, the folder is
+missing or has a different name.
 
-Use a GitHub token:
-
-```bash
-export GITHUB_TOKEN='PASTE_TOKEN_HERE'
-
-pip install "git+https://x-access-token:${GITHUB_TOKEN}@github.com/Sergey-Gromov/excel-framework-core.git@v0.1.0"
-pip install "openpyxl>=3.1.0" "pytest>=8.0"
-
-unset GITHUB_TOKEN
-```
-
-Or use the local folder option:
+Check the layout:
 
 ```bash
-pip install -e ../excel-framework-core
+ls ~/excel-513
 ```
+
+It must be exactly:
+
+```text
+~/excel-513/
+├── 513-finish/
+└── excel-framework-core/
+```
+
+and the command must be run from inside `~/excel-513/513-finish`.
+
+If you cannot copy the local folder, use the GitHub option (Option B) instead.
 
 ---
 
@@ -576,23 +597,23 @@ If:
 python3 --version
 ```
 
-shows Python 3.6, 3.8, or 3.9, install Python 3.11:
+shows Python 3.6 or older, install Python 3.8:
 
 ```bash
-sudo dnf install -y python3.11 python3.11-pip python3.11-venv
+sudo dnf install -y python38 python38-pip python38-venv
 ```
 
 or:
 
 ```bash
-sudo dnf module install -y python311
+sudo dnf module install -y python38
 ```
 
 Then recreate the virtual environment:
 
 ```bash
 rm -rf .venv
-/usr/bin/python3.11 -m venv .venv
+/usr/bin/python3.8 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 ```

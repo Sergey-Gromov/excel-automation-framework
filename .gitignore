@@ -10,6 +10,9 @@ incoming/*
 transformed/*
 !transformed/.gitkeep
 
+output/*
+!output/.gitkeep
+
 reports/*
 !reports/.gitkeep
 

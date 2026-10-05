@@ -1,3 +1,26 @@
-git+https://github.com/Sergey-Gromov/excel-framework-core.git@v0.1.0
-openpyxl>=3.1.0
-pytest>=8.0
+# Python 3.8.x required. Build the venv with:
+#   python3.8 -m venv .venv
+#   .venv/bin/pip install --ignore-requires-python -r requirements.txt
+#
+# NOTE: excel-framework-core declares requires-python >=3.10, but its code is
+# 3.8-compatible (verified: full compile check + complete test suite on 3.8).
+# The --ignore-requires-python flag is only needed for that package on 3.8.
+#
+# The transitive pins below are required because --ignore-requires-python
+# applies to the whole resolution: without them pip selects iniconfig /
+# packaging / pluggy / typing-extensions releases that need Python 3.9+/3.10+
+# and crash at import time on 3.8.
+#
+# The core package is installed editable from the sibling repository
+# (../excel-framework-core, commit b1e71c2, ahead of tag v0.1.0), matching
+# the project layout in AGENTS.md. If the sibling repo is not available,
+# install from GitHub at the same commit instead:
+#   pip install --ignore-requires-python \
+#     "git+https://github.com/Sergey-Gromov/excel-framework-core.git@b1e71c292078d87d33aeb656012378a77e216e72"
+-e ../excel-framework-core
+openpyxl==3.1.5
+pytest==8.3.5
+iniconfig==2.1.0
+packaging==26.2
+pluggy==1.5.0
+typing-extensions==4.13.2

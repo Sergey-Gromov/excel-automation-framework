@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 SHEET_NAME = "Ликвидность"
 HEADER_ROW = 9
+HEADER_MARKER = "Округ"
 MIN_DATA_ROW = 10
 EXPECTED_MAX_COL = 183
 
@@ -51,6 +52,13 @@ MOVED_HEADERS = (
 )
 
 NEW_FORMULA_COLUMNS = ("BB", "CV")
+
+RELEVANT_HEADER_COLS = frozenset(
+    list(DATE_COLUMNS.values())
+    + [ANCHOR_AFTER[1], ANCHOR_BEFORE[1]]
+    + [col for _, col in MOVED_HEADERS]
+    + [col for col, _ in DATED_HEADER_RULES]
+)
 
 
 def new_subtotal_formula(col_letter: str, max_row: int) -> str:

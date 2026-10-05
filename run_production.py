@@ -12,6 +12,8 @@ from excel_framework.validate_input import validate
 from openpyxl import load_workbook
 
 from transform import (
+    HEADER_MARKER,
+    RELEVANT_HEADER_COLS,
     SHEET_NAME,
     prepare_validation_pair,
     setup_logging,
@@ -69,6 +71,8 @@ def run(
                 validation_sample_path,
                 validation_input_path,
                 report_dir=report_dir,
+                header_marker=HEADER_MARKER,
+                relevant_header_cols=RELEVANT_HEADER_COLS,
             )
     except ValueError as exc:
         structural_error = str(exc)
