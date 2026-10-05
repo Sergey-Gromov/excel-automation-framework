@@ -147,7 +147,7 @@ def test_multiple_files_transform_successfully(basic_batch):
     assert basic_batch["code"] == 0
     for name in ("Alpha.xlsx", "Beta.xlsx"):
         ws = load_workbook(basic_batch["output_dir"] / name)[transform.SHEET_NAME]
-        assert ws.max_column == transform.EXPECTED_MAX_COL
+        assert ws.max_column == transform.OUTPUT_MAX_COL
 
 
 def test_excel_temp_files_are_ignored(basic_batch):
@@ -220,7 +220,7 @@ def test_overwrite_safely_replaces_existing_output(tmp_path):
     assert code == 0
     assert sentinel.read_bytes() != b"sentinel"
     ws = load_workbook(output_dir / "Report.xlsx")[transform.SHEET_NAME]
-    assert ws.max_column == transform.EXPECTED_MAX_COL
+    assert ws.max_column == transform.OUTPUT_MAX_COL
 
 
 def test_input_and_output_directories_cannot_be_the_same(tmp_path):

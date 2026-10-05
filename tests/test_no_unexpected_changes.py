@@ -39,7 +39,7 @@ def test_no_unexpected_changes_from_input(paths):
     actual_ws = actual_wb[transform.SHEET_NAME]
 
     assert actual_ws.max_row == input_ws.max_row
-    assert actual_ws.max_column == transform.EXPECTED_MAX_COL
+    assert actual_ws.max_column == transform.OUTPUT_MAX_COL
 
     last_data_row = transform.data_row(input_ws)
     date_cols = set(transform.DATE_COLUMNS.values())
@@ -53,7 +53,7 @@ def test_no_unexpected_changes_from_input(paths):
     style_attrs = ("font", "fill", "border", "alignment", "protection")
 
     for row in range(1, last_data_row + 1):
-        for final_col in range(1, transform.EXPECTED_MAX_COL + 1):
+        for final_col in range(1, transform.OUTPUT_MAX_COL + 1):
             source_col = transform.source_for_final_column(final_col)
             source_cell = input_ws.cell(row, source_col)
             actual_cell = actual_ws.cell(row, final_col)
@@ -104,7 +104,7 @@ def test_no_unexpected_changes_from_input(paths):
             f"Row height mismatch at row {row}"
         )
 
-    for final_col in range(1, transform.EXPECTED_MAX_COL + 1):
+    for final_col in range(1, transform.OUTPUT_MAX_COL + 1):
         source_col = transform.source_for_final_column(final_col)
         final_letter = get_column_letter(final_col)
         source_letter = get_column_letter(source_col)

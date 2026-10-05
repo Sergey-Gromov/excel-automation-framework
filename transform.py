@@ -21,6 +21,7 @@ HEADER_ROW = 9
 HEADER_MARKER = "Округ"
 MIN_DATA_ROW = 10
 EXPECTED_MAX_COL = 183
+OUTPUT_MAX_COL = 182
 
 DEFAULT_DATE_SOURCE = Path(__file__).resolve().parent / "sh513.xlsx"
 DATE_SOURCE_CELL = "B1"
@@ -51,12 +52,15 @@ MOVED_HEADERS = (
     ("Перерасчет суммы годовой корректировки", 163),
 )
 
+DELETED_HEADER = ("Исчезнувшие", 131)
+
 NEW_FORMULA_COLUMNS = ("BB", "CV")
 
 RELEVANT_HEADER_COLS = frozenset(
     list(DATE_COLUMNS.values())
     + [ANCHOR_AFTER[1], ANCHOR_BEFORE[1]]
     + [col for _, col in MOVED_HEADERS]
+    + [DELETED_HEADER[1]]
     + [col for col, _ in DATED_HEADER_RULES]
 )
 
@@ -122,9 +126,13 @@ def source_for_final_column(final_col: int) -> int:
         return 162
     if final_col == 76:
         return 163
-    if 77 <= final_col <= 163:
+    if 77 <= final_col <= 132:
         return final_col - 2
-    return final_col
+    if 133 <= final_col <= 162:
+        return final_col - 1
+    if 163 <= final_col <= OUTPUT_MAX_COL:
+        return final_col + 1
+    raise ValueError(f"Финальный столбец {final_col} вне диапазона 1:{OUTPUT_MAX_COL}.")
 
 
 def final_for_source_column(source_col: int) -> int:
@@ -134,14 +142,24 @@ def final_for_source_column(source_col: int) -> int:
         return 75
     if source_col == 163:
         return 76
-    if 75 <= source_col <= 161:
+    if 75 <= source_col <= 130:
         return source_col + 2
-    return source_col
+    if source_col == DELETED_HEADER[1]:
+        raise ValueError(
+            f"Исходный столбец {source_col} ({get_column_letter(source_col)}) "
+            f"удаляется трансформацией и не имеет финальной позиции."
+        )
+    if 132 <= source_col <= 161:
+        return source_col + 1
+    if 164 <= source_col <= EXPECTED_MAX_COL:
+        return source_col - 1
+    raise ValueError(f"Исходный столбец {source_col} вне диапазона 1:{EXPECTED_MAX_COL}.")
 
 
 _COLUMN_MAP = {
     get_column_letter(source_col): get_column_letter(final_for_source_column(source_col))
     for source_col in range(1, EXPECTED_MAX_COL + 1)
+    if source_col != DELETED_HEADER[1]
 }
 
 _STRING_PART_RE = re.compile(r'("(?:[^"]|"")*")')
@@ -410,6 +428,7 @@ def validate_structure(ws) -> None:
         ANCHOR_AFTER,
         ANCHOR_BEFORE,
         *MOVED_HEADERS,
+        DELETED_HEADER,
     )
     for name, col in required_headers:
         actual = _header_at(ws, col)
@@ -448,9 +467,31 @@ def _apply_column_dimensions(ws, max_col: int, snapshot: dict[int, tuple]) -> No
         dim.width, dim.bestFit, dim.hidden, dim.outlineLevel = source_dim
 
 
+def _clear_removed_tail_column(ws) -> None:
+    """Remove the leftover cells of the source column with no final position.
+
+    After the move loop, the sheet still holds the original content of source
+    column ``EXPECTED_MAX_COL`` (GA), which the deletion of the
+    ``Исчезнувшие`` column removes from the output. The column is the last
+    one, so deleting it shifts nothing; its column dimension is dropped too.
+    """
+    tail_col = EXPECTED_MAX_COL
+    ws.delete_cols(tail_col, 1)
+    letter = get_column_letter(tail_col)
+    if letter in ws.column_dimensions:
+        del ws.column_dimensions[letter]
+
+
 def _remap_merged_ranges(ws, original_ranges: list[str]) -> None:
+    deleted_col = DELETED_HEADER[1]
     for original in original_ranges:
         min_col, min_row, max_col, max_row = range_boundaries(original)
+        if min_col == max_col == deleted_col:
+            continue  # range lies entirely inside the deleted column
+        if min_col == deleted_col:
+            min_col = deleted_col + 1
+        if max_col == deleted_col:
+            max_col = deleted_col - 1
         remapped = (
             f"{get_column_letter(final_for_source_column(min_col))}{min_row}:"
             f"{get_column_letter(final_for_source_column(max_col))}{max_row}"
@@ -519,7 +560,9 @@ def transform(
         ws.unmerge_cells(merged_range)
 
     logger.info("Moving and translating columns")
-    for final_col in range(1, max_col + 1):
+    move_total = last_data_row * OUTPUT_MAX_COL
+    move_step = max(1, move_total // 100)
+    for final_col in range(1, OUTPUT_MAX_COL + 1):
         source_col = source_for_final_column(final_col)
 
         for row in range(1, last_data_row + 1):
@@ -536,10 +579,11 @@ def transform(
             cell.comment = comment
             if progress:
                 done = (final_col - 1) * last_data_row + row
-                if done % update_step == 0 or done == total_cells:
-                    _progress_bar(done, total_cells)
+                if done % move_step == 0 or done == move_total:
+                    _progress_bar(done, move_total)
 
-    _apply_column_dimensions(ws, max_col, column_snapshot)
+    _clear_removed_tail_column(ws)
+    _apply_column_dimensions(ws, OUTPUT_MAX_COL, column_snapshot)
     _remap_merged_ranges(ws, merged_ranges)
 
     logger.info("Applying date display formats to columns %s",
