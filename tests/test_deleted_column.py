@@ -1,9 +1,10 @@
-"""Focused tests for the deletion of the "Исчезнувшие" column (source EA / 131).
+"""Focused tests for the deletion of the "Исчезнувшие" (EA / 131) and
+"Период" (EB / 132) columns.
 
-The transformation removes source column 131 (EA) and shifts every column to
-its right one position left, so the output is 182 columns wide instead of 183.
-These tests pin that behavior down directly rather than through the generic
-comparator.
+The transformation removes source columns 131 (EA) and 132 (EB) and shifts
+every column to their right two positions left, so the output is 181 columns
+wide instead of 183. These tests pin that behavior down directly rather than
+through the generic comparator.
 """
 from pathlib import Path
 
@@ -38,34 +39,45 @@ def transformed_output(tmp_path_factory):
     return output_path
 
 
-def test_output_is_182_columns_wide(transformed_output):
+def test_output_is_181_columns_wide(transformed_output):
     ws = _load_sheet(transformed_output)
-    assert ws.max_column == transform.OUTPUT_MAX_COL == 182
+    assert ws.max_column == transform.OUTPUT_MAX_COL == 181
 
 
-def test_deleted_header_is_absent(transformed_output):
+def test_deleted_headers_are_absent(transformed_output):
+    input_ws = _load_sheet(SAMPLE_INPUT)
     ws = _load_sheet(transformed_output)
-    headers = [
-        ws.cell(transform.HEADER_ROW, col).value
-        for col in range(1, ws.max_column + 1)
-    ]
-    assert not any(isinstance(h, str) and "счез" in h for h in headers)
+
+    def headers(sheet):
+        return [
+            sheet.cell(transform.HEADER_ROW, col).value
+            for col in range(1, sheet.max_column + 1)
+        ]
+
+    # "Исчезнувшие" (source EA / 131) is unique, so it must be gone entirely.
+    assert not any(isinstance(h, str) and "счез" in h for h in headers(ws))
+
+    # "Период" (source EB / 132) is not unique, so verify exactly one of the
+    # source's "Период" columns was removed and the rest survived the shift.
+    source_period = sum(1 for h in headers(input_ws) if h == "Период")
+    output_period = sum(1 for h in headers(ws) if h == "Период")
+    assert output_period == source_period - 1
 
 
 def test_columns_after_deletion_shift_left(transformed_output):
     input_ws = _load_sheet(SAMPLE_INPUT)
     actual_ws = _load_sheet(transformed_output)
 
-    # Source EC (133) carries data (row 12 = 0); after the deletion it must
-    # land in final ED (134), while final EC (133) now holds the (empty)
-    # source EB (132).
-    assert input_ws.cell(12, 133).value == 0
-    assert actual_ws.cell(12, 134).value == input_ws.cell(12, 133).value
-    assert actual_ws.cell(12, 133).value is None
-
-    # The header row shifts the same way.
-    assert actual_ws.cell(9, 134).value == input_ws.cell(9, 133).value
-    assert actual_ws.cell(9, 133).value == input_ws.cell(9, 132).value
+    # Two source columns (131 EA, 132 EB) are deleted, so every column to
+    # their right shifts two positions left. Source DY (129) and DZ (130)
+    # land on final EA (131) and EB (132); source EC (133) stays on final EC
+    # (133) because the +2 move and the -2 deletion cancel out.
+    assert actual_ws.cell(9, 131).value == input_ws.cell(9, 129).value
+    assert actual_ws.cell(9, 131).value == "Организация ликвидирована"
+    assert actual_ws.cell(9, 132).value == input_ws.cell(9, 130).value
+    assert actual_ws.cell(9, 132).value == "Период"
+    assert actual_ws.cell(9, 133).value == input_ws.cell(9, 133).value
+    assert actual_ws.cell(9, 133).value == "Соглашение о реструктуризации"
 
 
 def test_final_ea_holds_translated_dy_subtotal(transformed_output):
@@ -88,8 +100,9 @@ def test_shifted_subtotals_are_translated(transformed_output):
     actual_ws = _load_sheet(transformed_output)
     last_data_row = data_row(input_ws)
 
-    # (final_col, source_col) pairs whose source row-7 cell holds a SUBTOTAL.
-    for final_col, source_col in ((134, 133), (162, 161)):
+    # (final_col, source_col) pairs in the shifted block (77:132) whose source
+    # row-7 cell holds a SUBTOTAL.
+    for final_col, source_col in ((77, 75), (131, 129)):
         source_value = input_ws.cell(7, source_col).value
         assert isinstance(source_value, str) and "SUBTOTAL" in source_value
         final_letter = get_column_letter(final_col)
@@ -104,38 +117,42 @@ def test_shifted_subtotals_are_translated(transformed_output):
 def test_merged_ranges_shrink_around_deletion(transformed_output):
     ws = _load_sheet(transformed_output)
     assert sorted(str(rng) for rng in ws.merged_cells.ranges) == [
-        "DH8:EN8",
-        "EO8:EQ8",
+        "DH8:EM8",
+        "EN8:EP8",
     ]
 
 
 def test_column_dimensions_follow_new_mapping(transformed_output):
     input_ws = _load_sheet(SAMPLE_INPUT)
     actual_ws = _load_sheet(transformed_output)
-    for final_col, source_col in ((134, 133), (163, 164), (182, 183)):
+    # (final_col, source_col): shifted (+2), identity, and tail (-2) blocks.
+    for final_col, source_col in ((131, 129), (133, 133), (162, 164)):
         final_letter = get_column_letter(final_col)
         source_letter = get_column_letter(source_col)
         for attr in ("width", "bestFit", "hidden", "outlineLevel"):
             assert getattr(actual_ws.column_dimensions[final_letter], attr) == (
                 getattr(input_ws.column_dimensions[source_letter], attr)
             ), f"column {attr} mismatch at {final_letter}"
-    # The removed tail column leaves no dimension behind.
+    # The removed tail columns leave no dimension behind.
+    assert get_column_letter(182) not in actual_ws.column_dimensions
     assert get_column_letter(183) not in actual_ws.column_dimensions
 
 
-def test_leftover_tail_column_is_empty(transformed_output):
+def test_leftover_tail_columns_are_empty(transformed_output):
     ws = _load_sheet(transformed_output)
     for row in range(1, ws.max_row + 1):
+        assert ws.cell(row, 182).value is None
         assert ws.cell(row, 183).value is None
 
 
 def test_missing_deleted_header_is_rejected(tmp_path):
     _require_samples()
-    input_path = tmp_path / "input.xlsx"
-    input_path.write_bytes(SAMPLE_INPUT.read_bytes())
-    wb = load_workbook(input_path)
-    ws = wb[transform.SHEET_NAME]
-    ws.cell(transform.HEADER_ROW, transform.DELETED_HEADER[1]).value = "Другой заголовок"
-    wb.save(input_path)
-    with pytest.raises(ValueError, match="Исчезнувшие"):
-        transform.transform(input_path, tmp_path / "out.xlsx", DATE_SOURCE)
+    for expected, col in transform.DELETED_HEADERS:
+        input_path = tmp_path / f"input_{col}.xlsx"
+        input_path.write_bytes(SAMPLE_INPUT.read_bytes())
+        wb = load_workbook(input_path)
+        ws = wb[transform.SHEET_NAME]
+        ws.cell(transform.HEADER_ROW, col).value = "Другой заголовок"
+        wb.save(input_path)
+        with pytest.raises(ValueError, match=expected):
+            transform.transform(input_path, tmp_path / f"out_{col}.xlsx", DATE_SOURCE)

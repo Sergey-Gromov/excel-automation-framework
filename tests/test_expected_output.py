@@ -23,16 +23,18 @@ def test_actual_applies_intended_changes(paths):
     assert actual_ws["BX9"].value.strip() == "Перерасчет суммы годовой корректировки"
     assert actual_ws["BY9"].value == input_ws["BW9"].value
     assert actual_ws["BY9"].value.strip() == "Оплачено нарастающим итогом с начала периода"
-    # Tail of the post-deletion (+1) block: final FF (162) <- source FE (161).
-    assert actual_ws["FF9"].value == input_ws["FE9"].value
-    assert actual_ws["FF9"].value.strip() == "Период"
+    # Identity block: final EC (133) <- source EC (133), position unchanged.
+    assert actual_ws["EC9"].value == input_ws["EC9"].value
+    assert actual_ws["EC9"].value.strip() == "Соглашение о реструктуризации"
 
     assert actual_ws["BV7"].value == subtotal("BV")
     assert actual_ws["BW7"].value == subtotal("BW")
     assert actual_ws["BX7"].value == subtotal("BX")
     assert actual_ws["BY7"].value == subtotal("BY")
-    # Post-deletion boundary: final ED (134) <- source EC (133), translated.
-    assert actual_ws["ED7"].value == subtotal("ED")
+    # Identity-block boundary: final EC (133) <- source EC (133), translated.
+    assert actual_ws["EC7"].value == subtotal("EC")
+    # Shifted block straddling the deletion: final EA (131) <- source DY (129).
+    assert actual_ws["EA7"].value == subtotal("EA")
     assert actual_ws["BB7"].value == subtotal("BB")
     assert actual_ws["CV7"].value == subtotal("CV")
     assert actual_ws["BB7"].number_format == transform.TOTAL_NUMBER_FORMAT
@@ -51,12 +53,13 @@ def test_actual_applies_intended_changes(paths):
         ("BW10", "FF10"),   # moved: final BW (75) <- source FF (162)
         ("BX10", "FG10"),   # moved: final BX (76) <- source FG (163)
         ("BY10", "BW10"),   # shifted: final BY (77) <- source BW (75)
-        ("ED12", "EC12"),   # post-deletion: final ED (134) <- source EC (133)
+        ("EA12", "DY12"),   # shifted, straddles deletion: final EA (131) <- source DY (129)
+        ("EC12", "EC12"),   # identity block: final EC (133) <- source EC (133)
     )
     for actual_coord, input_coord in moved_values:
         assert actual_ws[actual_coord].value == input_ws[input_coord].value
 
     assert sorted(str(rng) for rng in actual_ws.merged_cells.ranges) == [
-        "DH8:EN8",
-        "EO8:EQ8",
+        "DH8:EM8",
+        "EN8:EP8",
     ]

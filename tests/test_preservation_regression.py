@@ -66,9 +66,9 @@ def test_normal_rows_are_preserved_across_all_regions(transformed_output):
     last_data_row = data_row(input_ws)
 
     rows = [10, 25, 50, 75, last_data_row]
-    # head (1:74), moved (75/76), shifted (77:132), post-deletion (133:162),
-    # tail (163:182); 132/133 straddle the deleted column, 162/163 the tail.
-    final_cols = [1, 9, 19, 74, 75, 76, 77, 100, 132, 133, 150, 162, 163, 182]
+    # head (1:74), moved (75/76), shifted (77:132), identity (133:161),
+    # tail (162:181); 132/133 straddle shifted->identity, 161/162 identity->tail.
+    final_cols = [1, 9, 19, 74, 75, 76, 77, 100, 132, 133, 150, 161, 162, 181]
 
     for row in rows:
         for final_col in final_cols:
@@ -115,10 +115,10 @@ def test_moved_and_shifted_row7_subtotals_are_translated(transformed_output):
     actual_ws = _load_sheet(transformed_output)
     last_data_row = data_row(input_ws)
 
-    # Focus on the two MOVED year-adjustment columns (75/76), the post-deletion
-    # boundary (134 <- source EC), and shifted columns the existing tests do
-    # not cover.
-    final_cols = [75, 76, 120, 134, 150, 163]
+    # Focus on the two MOVED year-adjustment columns (75/76), the shifted
+    # column straddling the deletion (131 <- source DY), the identity-block
+    # boundary (133 <- source EC), and the identity tail (161 <- source FE).
+    final_cols = [75, 76, 131, 133, 150, 161]
     checked = 0
     for final_col in final_cols:
         source_col = source_for_final_column(final_col)

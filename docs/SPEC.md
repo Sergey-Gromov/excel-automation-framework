@@ -4,11 +4,12 @@
 
 Transform the source workbook by moving two year-adjustment columns next to the
 accrued-total column, deleting the `Исчезнувшие` column (source `EA` / 131) and
-shifting the columns after it one position left, shifting the intervening
-columns right by two positions, normalizing four date columns to `dd.mm.yyyy`
-display, adding two row-7 `SUBTOTAL` formulas, and replacing the date in three
-row-9 headers with the date from `sh513.xlsx!B1`. All unrelated workbook
-content must be preserved.
+the adjacent `Период` column (source `EB` / 132) and shifting the columns after
+them two positions left, shifting the intervening columns right by two
+positions, normalizing four date columns to `dd.mm.yyyy` display, adding two
+row-7 `SUBTOTAL` formulas, and replacing the date in three row-9 headers with
+the date from `sh513.xlsx!B1`. All unrelated workbook content must be
+preserved.
 
 ---
 
@@ -28,8 +29,9 @@ content must be preserved.
 - Sheet: `Ликвидность`
 - Header row: `9`
 - Expected input dimensions: at least `10` data rows and `183` columns (`GA`)
-- Expected output width: `182` columns (`FZ`) — the input is `183` columns and
-  the `Исчезнувшие` column (source `EA` / 131) is deleted (see Change 2)
+- Expected output width: `181` columns (`FY`) — the input is `183` columns and
+  the `Исчезнувшие` (source `EA` / 131) and `Период` (source `EB` / 132)
+  columns are deleted (see Change 2)
 - Data rows: `10:last_data_row`, where `last_data_row` is one less than the
   largest row referenced by the row-7 `SUBTOTAL` formulas. The small sample has
   `last_data_row = 100`; the production sample has `last_data_row = 6969`.
@@ -56,6 +58,7 @@ Required headers and sample positions:
 | `Начислено нарастающим итогом с начала периода с учетом всех перерасчетов` | `BV` / 74 |
 | `Оплачено нарастающим итогом с начала периода` | `BW` / 75 |
 | `Исчезнувшие` | `EA` / 131 |
+| `Период` | `EB` / 132 |
 | `Сумма годовой корректировки` | `FF` / 162 |
 | `Перерасчет суммы годовой корректировки` | `FG` / 163 |
 
@@ -86,13 +89,14 @@ duplicated, or moved from its sample position.
   `BW` / 75.
 - Move source column `FG` / 163 (`Перерасчет суммы годовой корректировки`) to
   final column `BX` / 76.
-- Delete source column `EA` / 131 (`Исчезнувшие`) — see Change 2.
+- Delete source columns `EA` / 131 (`Исчезнувшие`) and `EB` / 132 (`Период`) —
+  see Change 2.
 - Net effect on the remaining columns:
   - Source `1:74` stays in place.
   - Source `BW:DZ` / 75:130 shifts right by two to final `BY:EB` / 77:132.
-  - Source `EB:FE` / 132:161 shifts right by one to final `EC:FF` / 133:162
-    (the two-position move minus the one-position deletion).
-  - Source `FH:GA` / 164:183 shifts left by one to final `FG:FZ` / 163:182.
+  - Source `EC:FE` / 133:161 stays in place (the two-position move and the
+    two-position deletion cancel out).
+  - Source `FH:GA` / 164:183 shifts left by two to final `FF:FY` / 162:181.
 
 **Final column mapping:**
 
@@ -102,42 +106,46 @@ duplicated, or moved from its sample position.
 | `75` / `BW` | `162` / `FF` |
 | `76` / `BX` | `163` / `FG` |
 | `77:132` / `BY:EB` | `75:130` / `BW:DZ` |
-| `133:162` / `EC:FF` | `132:161` / `EB:FE` |
-| `163:182` / `FG:FZ` | `164:183` / `FH:GA` |
+| `133:161` / `EC:FE` | `133:161` / `EC:FE` |
+| `162:181` / `FF:FY` | `164:183` / `FH:GA` |
 
-The output is `182` columns wide (the input is `183`; the `Исчезнувшие` column
-is deleted by Change 2). It must not introduce the two blank columns present in
-the accidental reference workbook.
+The output is `181` columns wide (the input is `183`; the `Исчезнувшие` and
+`Период` columns are deleted by Change 2). It must not introduce the two blank
+columns present in the accidental reference workbook.
 
-### Change 2: Delete the `Исчезнувшие` column
+### Change 2: Delete the `Исчезнувшие` and `Период` columns
 
 **Sheet:** `Ликвидность`
 
 **Operation:**
 
 - Delete source column `EA` / 131 (`Исчезнувшие`).
-- Every column to the right of `EA` shifts one position left (see the net
+- Delete source column `EB` / 132 (`Период`), the right neighbor of the
+  deleted column.
+- Every column to the right of `EB` shifts two positions left (see the net
   effect in Change 1).
-- The output is `182` columns wide instead of `183`.
+- The output is `181` columns wide instead of `183`.
 
 **Formula semantics:**
 
 - The row-7 `SUBTOTAL` formula in the deleted column (`EA7`) is removed with
-  the column.
-- No other formula in the workbook references the deleted column, so the
+  the column. The deleted `EB` column contains no formula.
+- No other formula in the workbook references either deleted column, so the
   deletion itself requires no reference translation. Formulas in the shifted
   columns are translated by the same logical-column remapping as Change 3.
 
 **Merged ranges:**
 
-- A merged range that spans the deleted column shrinks by one column (the
-  standard Excel behavior for deleting a column inside a merge). See the
-  remapped merged ranges in "Preserved workbook content".
+- A merged range that spans the deleted columns shrinks by the number of
+  deleted columns it spans (the standard Excel behavior for deleting columns
+  inside a merge). See the remapped merged ranges in "Preserved workbook
+  content".
 
 **Validation:**
 
 - The transformation rejects input if the `Исчезнувшие` header is missing from
-  `EA` / 131 or has drifted.
+  `EA` / 131 or has drifted, or if the `Период` header is missing from
+  `EB` / 132 or has drifted.
 
 ### Change 3: Preserve and translate formulas in moved columns
 
@@ -162,7 +170,7 @@ Examples:
 | `FF7`: `=SUBTOTAL(109,FF10:FF101)` | `BW7` | `=SUBTOTAL(109,BW10:BW101)` |
 | `FG7`: `=SUBTOTAL(109,FG10:FG101)` | `BX7` | `=SUBTOTAL(109,BX10:BX101)` |
 | `BW7`: `=SUBTOTAL(109,BW10:BW101)` | `BY7` | `=SUBTOTAL(109,BY10:BY101)` |
-| `FE7`: `=SUBTOTAL(109,FE10:FE101)` | `FF7` | `=SUBTOTAL(109,FF10:FF101)` |
+| `FE7`: `=SUBTOTAL(109,FE10:FE101)` | `FE7` | `=SUBTOTAL(109,FE10:FE101)` |
 
 ### Change 4: Add row-7 totals
 
@@ -240,11 +248,13 @@ Existing merged ranges and their expected remapped positions:
 
 | Source merged range | Final merged range |
 |---|---|
-| `DF8:EM8` | `DH8:EN8` |
-| `EN8:EP8` | `EO8:EQ8` |
+| `DF8:EM8` | `DH8:EM8` |
+| `EN8:EP8` | `EN8:EP8` |
 
-Both ranges span the deleted `Исчезнувшие` column (`EA` / 131), so each shrinks
-by one column in addition to the move remapping.
+`DF8:EM8` spans both deleted columns (`EA` / 131 and `EB` / 132), so it
+shrinks by two columns in addition to the move remapping. `EN8:EP8` lies
+entirely to the right of the deleted columns, in the identity block, and is
+unchanged.
 
 The transformation must not change:
 
@@ -273,9 +283,9 @@ docs/ALLOWED_CHANGES.yml
 
 Allowed ranges:
 
-- `Ликвидность!BW1:FZ1048576` for the moved/shifted column block across
-  supported row counts (the block now ends at `FZ` / 182 because the
-  `Исчезнувшие` column is deleted)
+- `Ликвидность!BW1:FY1048576` for the moved/shifted column block across
+  supported row counts (the block now ends at `FY` / 181 because the
+  `Исчезнувшие` and `Период` columns are deleted)
 - `Ликвидность!I10:I1048576` for date display format
 - `Ликвидность!J10:J1048576` for date display format
 - `Ликвидность!S10:S1048576` for date display format
@@ -297,10 +307,11 @@ the current `allowed_ranges` schema. They are verified directly by tests.
 not part of the requested transformation:
 
 - It has `185` columns, including blank columns `164` and `165`.
-- It predates the deletion of the `Исчезнувшие` column (Change 2): the
-  reference still contains that column at `EA` / 131, so its column layout
-  cannot match the `182`-column output. The reference was intentionally kept
-  as-is; the deletion is covered by the contract and focused tests instead.
+- It predates the deletion of the `Исчезнувшие` and `Период` columns
+  (Change 2): the reference still contains those columns at `EA` / 131 and
+  `EB` / 132, so its column layout cannot match the `181`-column output. The
+  reference was intentionally kept as-is; the deletions are covered by the
+  contract and focused tests instead.
 - Most row-7 formulas are replaced by static values that do not broadly match
   the input column sums or cached formula values.
 - Row-9 month formulas are converted to plain text.
@@ -322,8 +333,9 @@ The task is complete only when:
 
 - `transform.py` applies only the changes described above.
 - `samples/actual_output.xlsx` is generated from `samples/input.xlsx`.
-- The output is `182` columns wide: the `Исчезнувшие` column (source `EA` /
-  131) is deleted and every column to its right shifts one position left.
+- The output is `181` columns wide: the `Исчезнувшие` (source `EA` / 131) and
+  `Период` (source `EB` / 132) columns are deleted and every column to their
+  right shifts two positions left.
 - Moved, shifted, formula, date-format, merged-range, and style-preservation
   tests pass.
 - Date-header replacement tests cover normal rows, blank values, formula

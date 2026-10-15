@@ -1,11 +1,12 @@
 # Intentional changes for the Ликвидность transformation.
 #
-# The moved/shifted block is final columns BW:FZ (75:182), rows 1:last_data_row.
+# The moved/shifted block is final columns BW:FY (75:181), rows 1:last_data_row.
 # Source columns FF:FG (162:163) move to BW:BX (75:76).
-# Source column EA (131, "Исчезнувшие") is deleted; the output is 182 columns.
+# Source columns EA (131, "Исчезнувшие") and EB (132, "Период") are deleted;
+# the output is 181 columns.
 # Source columns BW:DZ (75:130) shift right by two to BY:EB (77:132).
-# Source columns EB:FE (132:161) shift right by one to EC:FF (133:162).
-# Source columns FH:GA (164:183) shift left by one to FG:FZ (163:182).
+# Source columns EC:FE (133:161) stay in place (move and deletion cancel).
+# Source columns FH:GA (164:183) shift left by two to FF:FY (162:181).
 # Row-dependent ranges use the Excel maximum row so the whitelist remains valid
 # for workbooks with more than the 100-row sample.
 #
@@ -16,8 +17,8 @@
 
 allowed_ranges:
   - sheet: Ликвидность
-    range: BW1:FZ1048576
-    reason: Move FF/FG to BW/BX, delete the Исчезнувшие column (EA/131), and shift the remaining columns per the final mapping (output is 182 columns)
+    range: BW1:FY1048576
+    reason: Move FF/FG to BW/BX, delete the Исчезнувшие (EA/131) and Период (EB/132) columns, and shift the remaining columns per the final mapping (output is 181 columns)
   - sheet: Ликвидность
     range: I10:I1048576
     reason: Display Дата заключения as dd.mm.yyyy while keeping native date values
